@@ -27,13 +27,30 @@
 
         #game-container {
             position: relative;
-            width: 1280px;
-            height: 720px;
+            width: min(1280px, 100vw, calc(100vh * 16 / 9));
+            height: min(720px, 56.25vw, 100vh);
+            aspect-ratio: 16 / 9;
             box-shadow: 0 0 50px rgba(0, 0, 0, 0.95);
             background: #000;
             overflow: hidden;
         }
 
+        .boss7-caption {
+            position: absolute;
+            bottom: clamp(6px, 1.2%, 14px);
+            left: 5%;
+            width: 90%;
+            overflow-wrap: anywhere;
+            text-align: center;
+            font: clamp(16px, 2vw, 24px) monospace;
+            color: white;
+            background: rgba(0,0,0,.88);
+            padding: clamp(4px, .7vw, 9px);
+            line-height: 1.4;
+            pointer-events: none;
+            z-index: 25;
+            white-space: pre-line;
+        }
         canvas {
             width: 100%;
             height: 100%;
@@ -207,25 +224,6 @@
             font-size: 0.7rem;
         }
 
-        .achievement-item {
-            background: #171021;
-            border: 2px solid #3c2452;
-            padding: 10px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .achievement-item:hover {
-            background: #221633;
-        }
-        .achievement-desc {
-            margin-top: 6px;
-            font-size: 0.55rem;
-            color: #bfa8d6;
-            line-height: 1.4;
-            border-top: 1px dashed #3c2452;
-            padding-top: 6px;
-        }
-
         #intro-overlay {
             position: absolute;
             top: 0;
@@ -360,7 +358,6 @@
                 <h1 class="game-title">Phasmohospital</h1>
                 <div class="menu-buttons">
                     <button id="btn-play" class="btn">Jogar</button>
-                    <button id="btn-inventory" class="btn">Inventário</button>
                     <button id="btn-achievements" class="btn">Conquistas</button>
                     <button id="btn-settings" class="btn">Configurações</button>
                 </div>
@@ -403,32 +400,7 @@
             <div id="modal-achievements" class="modal hidden">
                 <div class="modal-content">
                     <h2>Conquistas</h2>
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <div class="achievement-item" onclick="toggleAchievementDesc(this)">
-                            <div id="ach-first-death" style="color: #5a4b66; font-size: 0.65rem;">[ Bloqueado ] Primeira Morte</div>
-                            <div class="achievement-desc" style="display: none;"><strong>Explicação:</strong> Morra pela primeira vez no hospital.</div>
-                        </div>
-                        <div class="achievement-item" onclick="toggleAchievementDesc(this)">
-                            <div id="ach-infirmary" style="color: #5a4b66; font-size: 0.65rem;">[ Bloqueado ] A Enfermaria</div>
-                            <div class="achievement-desc" style="display: none;"><strong>Explicação:</strong> Derrote "A Enfermeira", o primeiro chefe do jogo.</div>
-                        </div>
-                        <div class="achievement-item" onclick="toggleAchievementDesc(this)">
-                            <div id="ach-operating-room" style="color: #5a4b66; font-size: 0.65rem;">[ Bloqueado ] A Sala de Operações</div>
-                            <div class="achievement-desc" style="display: none;"><strong>Explicação:</strong> Derrote o boss da segunda sala.</div>
-                        </div>
-                        <div class="achievement-item" onclick="toggleAchievementDesc(this)">
-                            <div id="ach-pharmacy" style="color: #5a4b66; font-size: 0.65rem;">[ Bloqueado ] A Farmácia</div>
-                            <div class="achievement-desc" style="display: none;"><strong>Explicação:</strong> Derrote A Farmacêutica na quarta sala.</div>
-                        </div>
-                        <div class="achievement-item" onclick="toggleAchievementDesc(this)">
-                            <div id="ach-xray" style="color: #5a4b66; font-size: 0.65rem;">[ Bloqueado ] Raio-X</div>
-                            <div class="achievement-desc" style="display: none;"><strong>Explicação:</strong> Derrote o Chefe do Raio-X na quinta sala.</div>
-                        </div>
-                        <div class="achievement-item" onclick="toggleAchievementDesc(this)">
-                            <div id="ach-office" style="color: #5a4b66; font-size: 0.65rem;">[ Bloqueado ] O Escritório</div>
-                            <div class="achievement-desc" style="display: none;"><strong>Explicação:</strong> Derrote O Segurança na sexta sala.</div>
-                        </div>
-                    </div>
+                    <div id="achievements-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto;"></div>
                     <button class="btn-close">Fechar</button>
                 </div>
             </div>
@@ -438,7 +410,7 @@
                     <h2>Configurações</h2>
                     <div class="setting-group">
                         <label>Música:</label>
-                        <input type="range" id="vol-music" min="0" max="100" value="70">
+                        <input type="range" id="vol-music" min="0" max="100" value="90">
                     </div>
                     <div class="setting-group">
                         <label>SFX:</label>
@@ -477,8 +449,42 @@
         const AudioSystem = {
             ctx: null,
             sfxGain: null,
+            musicGain: null,
+            musicScene: null,
+            musicTimer: null,
+            musicStep: 0,
+            musicBar: 0,
+            nextMusicTime: 0,
+            noiseBuffer: null,
+            musicTracks: {
+                menu: {
+                    bpm: 96,
+                    bass: [38,null,38,null,45,null,45,null,34,null,34,null,41,null,41,null],
+                    lead: [74,null,77,81,null,77,74,null,72,null,74,77,null,81,77,null],
+                    chords: [[50,53,57],[46,50,53],[41,45,48],[48,52,55]],
+                    kick: [0,8], snare: [4,12], hat: [0,2,4,6,8,10,12,14]
+                },
+                explore: {
+                    bpm: 112,
+                    bass: [38,null,38,null,41,null,41,null,34,null,34,null,36,null,36,null],
+                    lead: [62,null,65,69,null,72,69,null,65,null,62,65,null,69,72,null],
+                    chords: [[50,53,57],[53,57,60],[46,50,53],[48,52,55]],
+                    kick: [0,4,8,12], snare: [2,6,10,14], hat: [0,2,4,6,8,10,12,14]
+                },
+                boss: {
+                    bpm: 128,
+                    bass: [38,null,38,38,41,null,41,null,34,null,34,34,36,null,36,null],
+                    lead: [74,77,null,81,77,null,74,72,74,null,77,81,null,84,81,null],
+                    chords: [[50,53,57],[48,52,55],[46,50,53],[48,52,55]],
+                    kick: [0,2,4,6,8,10,12,14], snare: [2,6,10,14], hat: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+                }
+            },
             setSfxVolume(value) {
                 if (this.sfxGain && this.ctx) this.sfxGain.gain.setTargetAtTime(Number(value) / 100, this.ctx.currentTime, 0.02);
+            },
+            setMusicVolume(value) {
+                musicVolume = Math.max(0, Math.min(1, Number(value) / 100));
+                if (this.musicGain && this.ctx) this.musicGain.gain.setTargetAtTime(musicVolume, this.ctx.currentTime, 0.03);
             },
             init() {
                 if (!this.ctx) {
@@ -486,10 +492,109 @@
                     this.sfxGain = this.ctx.createGain();
                     this.sfxGain.gain.value = Number(document.getElementById('vol-sfx').value) / 100;
                     this.sfxGain.connect(this.ctx.destination);
+                    this.musicGain = this.ctx.createGain();
+                    this.musicGain.gain.value = musicVolume;
+                    this.musicGain.connect(this.ctx.destination);
+                    this.noiseBuffer = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
+                    const noise = this.noiseBuffer.getChannelData(0);
+                    for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
                 }
                 if (this.ctx.state === 'suspended') {
                     this.ctx.resume();
                 }
+                this.updateMusicScene();
+            },
+            updateMusicScene() {
+                if (!this.ctx || !this.musicGain) return;
+                const bossEncounter = bossActive || Boss2Controller.active || Boss3Controller.active || Boss4Controller.active || Boss5Controller.active || Boss6Controller.active || Boss7.active;
+                const scene = GameState.current === 'MENU' || GameState.current === 'GAME_OVER' ? 'menu' : (bossEncounter ? 'boss' : 'explore');
+                if (scene === this.musicScene) return;
+                this.musicScene = scene;
+                this.musicStep = 0;
+                this.musicBar = 0;
+                this.nextMusicTime = this.ctx.currentTime + 0.06;
+                if (!this.musicTimer) this.musicTimer = setInterval(() => this.scheduleMusic(), 25);
+            },
+            scheduleMusic() {
+                if (!this.ctx || this.ctx.state !== 'running' || !this.musicScene) return;
+                const track = this.musicTracks[this.musicScene];
+                const stepDuration = 30 / track.bpm;
+                const scheduleUntil = this.ctx.currentTime + 0.12;
+                while (this.nextMusicTime < scheduleUntil) {
+                    if (this.nextMusicTime < this.ctx.currentTime - 0.1) this.nextMusicTime = this.ctx.currentTime + 0.02;
+                    this.playMusicStep(track, this.musicStep, this.musicBar, this.nextMusicTime, stepDuration);
+                    this.nextMusicTime += stepDuration;
+                    this.musicStep = (this.musicStep + 1) % 16;
+                    if (this.musicStep === 0 || this.musicStep === 8) this.musicBar++;
+                }
+            },
+            playMusicStep(track, step, bar, time, stepDuration) {
+                const bassNote = track.bass[step];
+                const leadNote = track.lead[step];
+                if (bassNote !== null) this.playMusicBass(bassNote, time, stepDuration * 1.8);
+                if (leadNote !== null) this.playMusicLead(leadNote, time, stepDuration * 0.85);
+                if (track.kick.includes(step)) this.playMusicKick(time);
+                if (track.snare.includes(step)) this.playMusicSnare(time);
+                if (track.hat.includes(step)) this.playMusicHat(time);
+                if (step === 0 || step === 8) {
+                    this.playMusicPad(track.chords[bar % track.chords.length], time, stepDuration * 7.7);
+                }
+            },
+            midiFrequency(note) { return 440 * Math.pow(2, (note - 69) / 12); },
+            playMusicBass(note, time, duration) {
+                const osc = this.ctx.createOscillator();
+                const filter = this.ctx.createBiquadFilter();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(this.midiFrequency(note), time);
+                filter.type = 'lowpass'; filter.frequency.setValueAtTime(220, time); filter.Q.value = 1.2;
+                gain.gain.setValueAtTime(0.0001, time); gain.gain.linearRampToValueAtTime(0.075, time + 0.015);
+                gain.gain.setValueAtTime(0.055, time + duration * 0.55); gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+                osc.connect(filter); filter.connect(gain); gain.connect(this.musicGain);
+                osc.start(time); osc.stop(time + duration + 0.02);
+            },
+            playMusicLead(note, time, duration) {
+                const osc = this.ctx.createOscillator();
+                const filter = this.ctx.createBiquadFilter();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(this.midiFrequency(note), time);
+                filter.type = 'lowpass'; filter.frequency.setValueAtTime(2600, time);
+                gain.gain.setValueAtTime(0.0001, time); gain.gain.linearRampToValueAtTime(0.045, time + 0.018);
+                gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+                osc.connect(filter); filter.connect(gain); gain.connect(this.musicGain);
+                osc.start(time); osc.stop(time + duration + 0.02);
+            },
+            playMusicPad(notes, time, duration) {
+                notes.forEach((note, index) => {
+                    const osc = this.ctx.createOscillator();
+                    const filter = this.ctx.createBiquadFilter();
+                    const gain = this.ctx.createGain();
+                    osc.type = index === 1 ? 'triangle' : 'sawtooth';
+                    osc.frequency.setValueAtTime(this.midiFrequency(note), time);
+                    osc.detune.value = index === 0 ? -5 : (index === 2 ? 5 : 0);
+                    filter.type = 'lowpass'; filter.frequency.setValueAtTime(1250, time);
+                    gain.gain.setValueAtTime(0.0001, time); gain.gain.linearRampToValueAtTime(0.018, time + 0.22);
+                    gain.gain.setValueAtTime(0.015, time + duration * 0.72); gain.gain.exponentialRampToValueAtTime(0.0001, time + duration);
+                    osc.connect(filter); filter.connect(gain); gain.connect(this.musicGain);
+                    osc.start(time); osc.stop(time + duration + 0.03);
+                });
+            },
+            playMusicKick(time) {
+                const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+                osc.type = 'sine'; osc.frequency.setValueAtTime(145, time); osc.frequency.exponentialRampToValueAtTime(44, time + 0.14);
+                gain.gain.setValueAtTime(0.18, time); gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+                osc.connect(gain); gain.connect(this.musicGain); osc.start(time); osc.stop(time + 0.2);
+            },
+            playMusicSnare(time) {
+                const source = this.ctx.createBufferSource(); const filter = this.ctx.createBiquadFilter(); const gain = this.ctx.createGain();
+                source.buffer = this.noiseBuffer; filter.type = 'bandpass'; filter.frequency.setValueAtTime(1900, time);
+                gain.gain.setValueAtTime(0.055, time); gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.14);
+                source.connect(filter); filter.connect(gain); gain.connect(this.musicGain); source.start(time); source.stop(time + 0.16);
+            },
+            playMusicHat(time) {
+                const source = this.ctx.createBufferSource(); const filter = this.ctx.createBiquadFilter(); const gain = this.ctx.createGain();
+                source.buffer = this.noiseBuffer; filter.type = 'highpass'; filter.frequency.setValueAtTime(6500, time);
+                gain.gain.setValueAtTime(0.018, time); gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.045);
+                source.connect(filter); filter.connect(gain); gain.connect(this.musicGain); source.start(time); source.stop(time + 0.055);
             },
             playPlaySound() {
                 this.init();
@@ -645,9 +750,10 @@
         document.getElementById('game-speed').addEventListener('input', (e) => {
             gameSpeedMultiplier = parseFloat(e.target.value) / 100;
         });
-        let musicVolume = 0.7;
-        document.getElementById('vol-music').addEventListener('input', (e) => { musicVolume = Number(e.target.value) / 100; });
+        let musicVolume = 0.9;
+        document.getElementById('vol-music').addEventListener('input', (e) => { AudioSystem.setMusicVolume(e.target.value); });
         document.getElementById('vol-sfx').addEventListener('input', (e) => { AudioSystem.setSfxVolume(e.target.value); });
+        document.addEventListener('pointerdown', () => AudioSystem.init(), { once: true, capture: true });
 
         const Projectiles = [];
         let crucifixEffects = [];
@@ -658,6 +764,40 @@
         
         let playerHealth = 5;
         let maxPlayerHealth = 5;
+        const achievementDefinitions = [
+            ['one-life-boss', 'Como um gato de botas', 'Derrote um boss com apenas uma vida restante.'],
+            ['nurse', 'Apenas o inicio', 'Vença a Enfermeira (primeiro boss).'],
+            ['first-death', 'Para tudo existe uma primeira vez', 'Morra pela primeira vez.'],
+            ['no-deaths', 'Try hard!', 'Zere o jogo sem morrer.'],
+            ['first-try', 'Sorte de principiante', 'Passe de um boss de primeira, sem morrer durante a tentativa.'],
+            ['security', 'Uh... Hello? Hello hello?', 'Derrote o Segurança (sexto boss).'],
+            ['pharmacist', 'Você tem ibuprofeno?', 'Derrote a Farmacêutica (quarto boss).'],
+            ['surgeon', 'Pedras no rim', 'Derrote o Cirurgião (segundo boss).'],
+            ['ten-deaths', 'Precisa de ajuda?', 'Morra um total de 10 vezes durante o jogo.'],
+            ['radiologist', 'Foi só um arranhãozinho...', 'Derrote o Radiologista (quinto boss).'],
+            ['cleaner', 'Que bagunça toda é essa?!', 'Derrote a Chefe de Limpeza (terceiro boss).'],
+            ['psychiatrist', 'Finalmente acabou?', 'Derrote o Psiquiatra (sétimo e último boss).'],
+            ['ghost-busters', 'Ghost busters!', 'Mate um total de 500 fantasmas.'],
+            ['wrong-box', 'Devagar demais!', 'Escolha a caixa errada na luta contra o Radiologista.'],
+            ['corrupt-copy', 'Aquela sou eu?', 'Morra para sua cópia corrompida.'],
+            ['white-door', 'Até o próximo verão!', 'Entre na porta branca (fim?).'],
+            ['pharmacist-death', 'Cadê o jaléco?!', 'Morra para a Farmacêutica (quarto boss).'],
+            ['thirty-five-deaths', 'Você tá pelo menos tentando?', 'Morra um total de 35 vezes durante o jogo.'],
+            ['surgeon-death', 'Dose letal', 'Morra para o Cirurgião (segundo boss).'],
+            ['cleaner-death', 'Bebeu cloro?', 'Morra para a Chefe de Limpeza (terceiro boss).'],
+            ['nurse-death', 'Mais já?', 'Morra para a Enfermeira (primeiro boss).'],
+            ['psychiatrist-death', 'Quase lá!', 'Morra para o Psiquiatra (sétimo boss).'],
+            ['no-damage', 'Até que ponto chegamos...', 'Zere o jogo sem tomar dano.'],
+            ['radiologist-death', 'Traumatismo craniano', 'Morra para o Radiologista (quinto boss).'],
+            ['security-death', 'Sorria! Você está sendo filmado', 'Seja morto pelo Segurança (sexto boss).']
+        ];
+        let unlockedAchievements = {};
+        let totalDeaths = 0;
+        let totalGhostsKilled = 0;
+        let currentRunDeaths = 0;
+        let currentRunTookDamage = false;
+        let bossAttemptDeaths = {};
+        let lastDamageSource = '';
 
         let ghostsSpawnedTotal = 0;
         let maxGhostsToSpawn = 30;
@@ -666,22 +806,6 @@
         let bossDefeatedSequence = false;
         let waitingForPlayerContinue = false;
         let lastActiveRoom = 'INFIRMARY';
-
-        let achievementFirstDeathUnlocked = false;
-        let achievementInfirmaryUnlocked = false;
-        let achievementOperatingRoomUnlocked = false;
-        let achievementPharmacyUnlocked = false;
-        let achievementXrayUnlocked = false;
-        let achievementOfficeUnlocked = false;
-
-        function toggleAchievementDesc(card) {
-            const desc = card.querySelector('.achievement-desc');
-            if (desc.style.display === 'none') {
-                desc.style.display = 'block';
-            } else {
-                desc.style.display = 'none';
-            }
-        }
 
         const blueKeyMatrix = [
             ["_","_","_","_","B","B","B","_","_","_","_"],
@@ -722,6 +846,56 @@
             }
         }
 
+        function renderAchievements() {
+            const list = document.getElementById('achievements-list');
+            if (!list) return;
+            list.innerHTML = '';
+            achievementDefinitions.forEach(([id, title, description]) => {
+                const item = document.createElement('div');
+                item.className = 'achievement-item';
+                item.style.cssText = 'background:#171021;border:2px solid #3c2452;padding:9px;color:' + (unlockedAchievements[id] ? '#c084fc' : '#74667e') + ';font-size:.65rem;';
+                item.innerHTML = '<strong>' + (unlockedAchievements[id] ? '✓ ' : '🔒 ') + title + '</strong><div class="achievement-desc" style="margin-top:5px;color:#bfa8d6;font-size:.55rem;line-height:1.4">' + description + '</div>';
+                list.appendChild(item);
+            });
+        }
+
+        function unlockAchievement(id) {
+            if (unlockedAchievements[id]) return;
+            unlockedAchievements[id] = true;
+            renderAchievements();
+            const achievement = achievementDefinitions.find(item => item[0] === id);
+            if (achievement && GameState.current !== 'MENU') showInteractionMsg('Conquista desbloqueada: ' + achievement[1]);
+        }
+
+        function registerGhostKills(amount = 1) {
+            if (!Number.isFinite(amount) || amount <= 0) return;
+            totalGhostsKilled += amount;
+            if (totalGhostsKilled >= 500) unlockAchievement('ghost-busters');
+        }
+
+        const bossAchievementByRoom = {
+            INFIRMARY: ['nurse', 'nurse-death'],
+            ROOM_BLUE: ['surgeon', 'surgeon-death'],
+            ROOM_AQUA: ['cleaner', 'cleaner-death'],
+            ROOM_GREEN: ['pharmacist', 'pharmacist-death'],
+            ROOM_YELLOW: ['radiologist', 'radiologist-death'],
+            ROOM_ORANGE: ['security', 'security-death'],
+            ROOM_RED: ['psychiatrist', 'psychiatrist-death']
+        };
+
+        function registerPlayerDamage(source = '') {
+            currentRunTookDamage = true;
+            lastDamageSource = source;
+        }
+
+        function registerBossDefeat(room) {
+            const achievementIds = bossAchievementByRoom[room];
+            if (!achievementIds) return;
+            unlockAchievement(achievementIds[0]);
+            if (!bossAttemptDeaths[room]) unlockAchievement('first-try');
+            if (playerHealth === 1) unlockAchievement('one-life-boss');
+        }
+
         function resetGameSession(preserveProgress = false) {
             Boss7.reset();
             if (!preserveProgress) whiteKey=false;
@@ -756,6 +930,28 @@
         }
 
         function triggerGameOver() {
+            const deathRoom = GameState.current;
+            totalDeaths++;
+            currentRunDeaths++;
+            if (totalDeaths === 1) unlockAchievement('first-death');
+            if (totalDeaths >= 10) unlockAchievement('ten-deaths');
+            if (totalDeaths >= 35) unlockAchievement('thirty-five-deaths');
+            const activeBossByRoom = {
+                INFIRMARY: bossActive && !!boss,
+                ROOM_BLUE: Boss2Controller.active,
+                ROOM_AQUA: Boss3Controller.active,
+                ROOM_GREEN: Boss4Controller.active,
+                ROOM_YELLOW: Boss5Controller.active,
+                ROOM_ORANGE: Boss6Controller.active,
+                ROOM_RED: Boss7.active
+            };
+            if (activeBossByRoom[deathRoom]) {
+                bossAttemptDeaths[deathRoom] = true;
+                const deathAchievement = bossAchievementByRoom[deathRoom]?.[1];
+                if (deathAchievement) unlockAchievement(deathAchievement);
+            }
+            if (deathRoom === 'ROOM_RED' && lastDamageSource === 'corruptClone') unlockAchievement('corrupt-copy');
+            lastDamageSource = '';
             if (GameState.current === 'INFIRMARY' || GameState.current === 'ROOM_BLUE' || GameState.current === 'ROOM_AQUA' || GameState.current === 'ROOM_GREEN' || GameState.current === 'ROOM_YELLOW' || GameState.current === 'ROOM_ORANGE' || GameState.current === 'ROOM_RED') {
                 lastActiveRoom = GameState.current;
             }
@@ -765,14 +961,6 @@
             document.getElementById('btn-pause').classList.add('hidden');
             document.getElementById('darkness-overlay').style.opacity = '0';
 
-            if (!achievementFirstDeathUnlocked) {
-                achievementFirstDeathUnlocked = true;
-                const achEl = document.getElementById('ach-first-death');
-                if (achEl) {
-                    achEl.innerHTML = "[ Desbloqueado ] Primeira Morte";
-                    achEl.style.color = "#a855f7";
-                }
-            }
         }
 
         function spawnApple(x, y, direction) {
@@ -833,6 +1021,8 @@
             } else {
                 ghosts = [];
             }
+
+            if (count > 0 && ghosts.length === 0) registerGhostKills(count);
 
             crucifixEffects.push({
                 x: x + (direction * 18),
@@ -1082,13 +1272,17 @@
         };
         bossTextures.nurse.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAnUExURUUJaVYTfOPp6a0tjG0TgRQBQWYclIA5qPN4+qdIwpYektC92wAAADnHaA8AAAANdFJOU////////////////wA96CKGAAAACXBIWXMAAA7CAAAOwgEVKEqAAAAAGXRFWHRTb2Z0d2FyZQBQYWludC5ORVQgNS4xLjEyEwFHdAAAALhlWElmSUkqAAgAAAAFABoBBQABAAAASgAAABsBBQABAAAAUgAAACgBAwABAAAAAgAAADEBAgARAAAAWgAAAGmHBAABAAAAbAAAAAAAAADydgEA6AMAAPJ2AQDoAwAAUGFpbnQuTkVUIDUuMS4xMgAAAwAAkAcABAAAADAyMzABoAMAAQAAAAEAAAAFoAQAAQAAAJYAAAAAAAAAAgABAAIABAAAAFI5OAACAAcABAAAADAxMDAAAAAAg38vHHLQ098AAAEBSURBVFhH7ZYBCoMwDEWb2K5ad//zjk8W4wIVRFLH2IPJZvIfdGpqel4k+RNn+XJB2vAV46B0WUDEzDxN+BD5qhInkDjCgLmniBPkLAJZBHPOvkOIE0BRNnrxWIHFga8qcYJ9+PHoK8YIar1XUOs8Q+E7hBGCUpYFR98hxAk+F9GLxwpaM4WvGXGCnFtrTQYavvm6EicgwhhBFGC4+A4hTpBSKUT5DXS+Q4gWGOMFuJVte1/XewS6uTHfIcCfaEvAL98hRAkkYhfxDoE8THYrn3zFuShAuwT1YRaJ7wMRgn1UB5pKfG+MQJGBqviqEikQjsIgXgCFP7NnhOCYv+AnBC9WlKXBPfEUeAAAAABJRU5ErkJggg==';
         bossTextures.cleaner.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAkUExURQgOIw6XbAHRkGX/zgGQZBf9tQPlngGodB+qfwLAhQeBWwAAAHQFi3wAAAAMdFJOU///////////////ABLfzs4AAAAJcEhZcwAADsIAAA7CARUoSoAAAAAZdEVYdFNvZnR3YXJlAFBhaW50Lk5FVCA1LjEuMTITAUd0AAAAuGVYSWZJSSoACAAAAAUAGgEFAAEAAABKAAAAGwEFAAEAAABSAAAAKAEDAAEAAAACAAAAMQECABEAAABaAAAAaYcEAAEAAABsAAAAAAAAAPJ2AQDoAwAA8nYBAOgDAABQYWludC5ORVQgNS4xLjEyAAADAACQBwAEAAAAMDIzMAGgAwABAAAAAQAAAAWgBAABAAAAlgAAAAAAAAACAAEAAgAEAAAAUjk4AAIABwAEAAAAMDEwMAAAAACDfy8cctDT3wAAAQdJREFUWEftk4sOgyAMRSkPEfb//7vcdAYtOtwKLks8CQZr7wkomocSIwufcgtuAfgLgVkhn10hQIzoWFEVJEoBh6z9rYDIubKJqkMWtnQRqLegEBB5j9DXn1EpIAphmqaphOv4SEGMIYRgDK4silH2gHGCeXYOi3bOOZbM80dbUApijBEBJiXc77/GqsAoBfiAWDpAiGeskL1VASgFiIOiWGY40rK7KnQQeI9jw5JFxLPrBNZCwRRRCN7L3jGCnFOyL4oIXCPImQgHF5qcrV0PXGV/fwEUwJh61PExArD8yFtkF9gtdhCAM/GxAtCKjxa042MF7TB481gpaAUXDtvUgrPcgg6CJyXKkmGbCdoqAAAAAElFTkSuQmCC';
-        bossTextures.surgeon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAnUExURQFEhQhvngLy2waruwsATlp5jwEJX4CfqJ++wuPp6QAjcwgOIwAAAE17xQUAAAANdFJOU////////////////wA96CKGAAAACXBIWXMAAA7CAAAOwgEVKEqAAAAAGXRFWHRTb2Z0d2FyZQBQYWludC5ORVQgNS4xLjEyEwFHdAAAALhlWElmSUkqAAgAAAAFABoBBQABAAAASgAAABsBBQABAAAAUgAAACgBAwABAAAAAgAAADEBAgARAAAAWgAAAGmHBAABAAAAbAAAAAAAAADydgEA6AMAAPJ2AQDoAwAAUGFpbnQuTkVUIDUuMS4xMgAAAwAAkAcABAAAADAyMzABoAMAAQAAAAEAAAAFoAQAAQAAAJYAAAAAAAAAAgABAAIABAAAAFI5OAACAAcABAAAADAxMDAAAAAAg38vHHLQ098AAADPSURBVFhH7dTrCoMwDIbh9HyY93+945sTZ0DLiFmG+P4RmvZBUaRJGPGFb/t7gAbzG0CDDWLAOb7C0wWc835EaALOheB9CMeEFkA0H0cg9l/nzkAMINEjIDEgfo0nAOJPWQzESBQjX92mB8RXRCnhyqdrWkDOpeAogFJqzZnvWNIDai0l5/l4axZAa7jx+bgF0PsW6J3vWNIFercFUgKA4xYAfuytEeEBUrIGcOXTtd3RBQAQ1sA0Pd7ZAQvBVz+7PjAm9AF0RPwGOOoGTgCel4+yodWjBqEAAAAASUVORK5CYII=';
+bossTextures.surgeon.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAC50lEQVR4AeyWPWsVURCGZ4OYREFQbBKIUYRYpLYRLYSAndbGQsgf0EIREStRUBAULCV2/geJ2MRKsLQMCBb2FhJF3OQJDCwLm83uPe/skt3Aw/maMx/vmdx7p2zgf6MAA28AGzugqw7IVp7m0FV8jzt2gCsx1HHsgKG+vNc9doArET1OL88ZRMctxxs7oKyIej1zZz2Hv0+uGDAHddwq/2MHVCmTep9Xhv+XFwzcP3PgDHw/ahxcB5SFlQnA73zgVYFXhn/Xzhp4IsyBM8AWuAtupxplAqgSTu1XJkD+8VEG26/XMpj6/MPgyIfvBl4Ic+AMsAXugtupRpkAqoRT+w0TgFcFXhm8EObAGfh+1BgmQFRBTeOEC8Arw9HHmwbMoWniqezDBUiVeCo/4QIct+s5/Pn204A5pCqoqZ9wAZomqLaXC8DrFikXdOPhVYOiDfOynWotF0CVeCq/MgGy2ds53H+3asArQ1Xi2MCbT/cMuAtV9qn2ZQKkSlDtRy7A4uK8wdLSnMHv2ZMGNy8eM2APsIGV5QsG6sLdv1wAD9TVWBdXLgCvCbwueEK8OrAH2ICfR41yAaIKaRtnFKCtcoflXngH5POnDfoiYLgAfSnc85AJwCuDB9rY+Grgax/55AdfR48yAaILaRtPJ8DWy8x2Wbj0wuD53VUDT5TvfvD1g1fvDXxN94CvVaNOAFXGif32RgC6A+gWoHv2SFxw2V1vBCgnFrUOFyA7d8ogqsC6OOEC1CUUfR4mwJlbbw2iC6yLFyZAXSKpzpv60Quw+1uAT/PpL+sGnuDas00DuqKIn0eNegGiKmkZJ1wAumA/6JY9WhbU9Fq4AE0TVNuHCbD9ayuDqoI4g6pz1X6YAKoCJvXbGwFmTpzPYdKCmt7vjQBNE09lHy4A/+dFyoXQBVDeV63DBVAV0tZv5wIUu6E4pwugbWEHvde5AAdNVGXXWwG8G1SFu9/eCuAJqsdRALXCav+T+t8BAAD//2mak80AAAAGSURBVAMAZxkUkN3FeDoAAAAASUVORK5CYII=';
         bossTextures.pharmacist.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAhUExURRGAax2bWwgOIwdaZljMP6DmVQEoTej9buPp6S+zQQAAAOagHTwAAAALdFJOU/////////////8ASk8B8gAAAAlwSFlzAAAOwgAADsIBFShKgAAAABl0RVh0U29mdHdhcmUAUGFpbnQuTkVUIDUuMS4xMhMBR3QAAAC4ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEQAAAFoAAABphwQAAQAAAGwAAAAAAAAA8nYBAOgDAADydgEA6AMAAFBhaW50Lk5FVCA1LjEuMTIAAAMAAJAHAAQAAAAwMjMwAaADAAEAAAABAAAABaAEAAEAAACWAAAAAAAAAAIAAQACAAQAAABSOTgAAgAHAAQAAAAwMTAwAAAAAIN/Lxxy0NPfAAABE0lEQVRYR+2U2w7CIBBEt0Av9P8/2IyTtYCA0bJ9MD0JpcDOSd2qsp9Eyo1vuQW3AHQFItMT6VR1jk4LRNyLtqJ5cFLgnPeMhsDZ+7KG2AgYYHCerxegfN+XBXMI68oPsSxlHbEWHE28WpAqenFLARQi28ZR1hxUjn4UIKB3JEZEQ4AixvxUV2MFuQJxEAJnKFSd1o4T5A/n3DRtGwZEvM+jOo8X8AARvkK2EisqjnoyUpA2qSVIq8lYwaFgBFeodJXXktECVcgTPjjDoKwFb5unBYASRvVa1ig2AsCgNrCtsBPgDw1hjnoDQfNggADN5OurfYUVW0H+E69jLaCi3EuxF0BR7qTYC/rxKwSfuAV/IXgA8yuIPe3DTqgAAAAASUVORK5CYII=';
         bossTextures.radiologist.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAhUExURf/BB//KKP/VT+Pp6Z++wv+gAP9vAP+PAP/ggggOIwAAAIYWXz8AAAALdFJOU/////////////8ASk8B8gAAAAlwSFlzAAAOwgAADsIBFShKgAAAABl0RVh0U29mdHdhcmUAUGFpbnQuTkVUIDUuMS4xMhMBR3QAAAC4ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEQAAAFoAAABphwQAAQAAAGwAAAAAAAAA8nYBAOgDAADydgEA6AMAAFBhaW50Lk5FVCA1LjEuMTIAAAMAAJAHAAQAAAAwMjMwAaADAAEAAAABAAAABaAEAAEAAACWAAAAAAAAAAIAAQACAAQAAABSOTgAAgAHAAQAAAAwMTAwAAAAAIN/Lxxy0NPfAAAA9klEQVRYR+2UAQqDMAxF084mrfc/8PhkQRrWzqHZYPNBRePPo1QMrQchX3iXSzAVEKWUc0o0yUQKiG4PlmWmGL46KCjF2lVRik8YkQJmZr1+QyDSC0R8wogSqMKOcNweKYBiWebbB5GCdcUBMvtqT6xgD5ECDBQw+5kjBUS11loKrjPF8NVBARr75RNGnCBnNIqgGfc+YcQJRERy1iXyeUFrrW0CPPmEcb4AYUUkJeaUVKD4dITAFBgnKsBIGbVHCBDTKMZZazbUtnrP+QJgAt34JnhGjMBQwahViRXMPp/xCYGv9fyDwFc8sYLX7dGCPVyCnxDcAdtQlZU45xmWAAAAAElFTkSuQmCC';
         bossTextures.security.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAhUExURdhFJ8woH5++wrEOLP6qOPOFMeZhJpYJMwgOI+Pp6QAAAPFS/SEAAAALdFJOU/////////////8ASk8B8gAAAAlwSFlzAAAOwgAADsIBFShKgAAAABl0RVh0U29mdHdhcmUAUGFpbnQuTkVUIDUuMS4xMhMBR3QAAAC4ZVhJZklJKgAIAAAABQAaAQUAAQAAAEoAAAAbAQUAAQAAAFIAAAAoAQMAAQAAAAIAAAAxAQIAEQAAAFoAAABphwQAAQAAAGwAAAAAAAAA8nYBAOgDAADydgEA6AMAAFBhaW50Lk5FVCA1LjEuMTIAAAMAAJAHAAQAAAAwMjMwAaADAAEAAAABAAAABaAEAAEAAACWAAAAAAAAAAIAAQACAAQAAABSOTgAAgAHAAQAAAAwMTAwAAAAAIN/Lxxy0NPfAAABFElEQVRYR+2V0Q7CIAxFWwus+P8fbK4NwTVDY+Z90HgeNlbak4yVIdeTSA68y1/wBQK5k6OPPJ08KVAVudwRUc2zA57ADKWl1NoaRmY5I2AJtg1FKHbHC+Bp23IWYAmg6L01EXdVs96Py5kCLGPvqu64r5aQK4hWAus2YguAe47s4QpaQyPhmmcmTIFIKaWMa54dLCdOC0SwlULQWq0rxSJ8WuCObTwF2FTHH5QjQDLSp2DGMhxBNHD+jEflLEGkohSLF/cZ38MRADRSrfilqWL0ZiN9QIAylIMY54yAJXgsf67gCXCgmQ2BGSI5C7AEONiCIVgdbjwBGIJVMeAK4jeSY3v4ghzJsAWvFXzBK/6CnxDcACoVkEWrasGHAAAAAElFTkSuQmCC';
+        const bossSecurityLaserTexture = new Image();
+        bossSecurityLaserTexture.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACu0lEQVR4AeyWPWsVQRSGz9qliIWNoIWV3IBWKoqVhYqFhRb2NtqkERtB/AHa2d3GMn9AC7EQC7EIiB+FFpHYiB8oSIp8EEXk6gMeGIYN987szOy6ewIPM7NzZs7M+55JsksG/mMCDLwAxCrAKmDgCtgTGHgB2C9BewL2BAaugD2BgReA/RUY3BPwK764AC8WDkxg5exoUgdz4B8017i4ALkuErtvdgFw0+XNeElg+eY9qYM5cNfQj73gtHXZBZh2gLbnkwvwYPfhiQtuulz+fkPg0vI1qePc0hUBdw19d0/6qYRLLkCqg5XaJ5kA47mjE1i7PxYXvQiug4433m8JzN96LUAf1j9VAidvXxXQeHdP+lQB6Hxsm0yA2AO0va6xALgOcw/vCvgX0ne+tfpT4OujNQE/DtdBv29+/CGw5+KigH7XlioAcoN+D20bCxCasGvx0QKgOuA6TLsY7xs0DrdBx7EtuYGzQOg+0QKEJupqfLQAi9svK9g+f11AL3jm0EhccB10HtdBx37Luwf/u7snfZ0nN3AW0O+zttECzJqg63GNBUB1wAXY6cK4DjqPy7DT+POXeQGd91tyAbnBn5913FiAWRO1FTctbzIBcAFeHTwtoIl/33kmsPnv77q2Oq8tbrvo9yOrTwR0zN5ALtDvsW0yAWIP0Pa65AJcWH9bAS7Bt1PHBfY+fS7gukz/7//zAr4QuA6sBfYC9gY/PnacXIDYg7S1LpsAuATHVj5UgIuwf9+GwOjEL6mDOSAWWAvsBamFyiZA6oPm2q+YALjosvD4XVWHG0M/18V132ICaMKutSZA1xwpfR6rgNKKdy2fVUDXHCl9HquA0ornzhe6v1VAqGJ9i7cK6JujofexCghVrG/xVgF9czT0PlYBoYr1Ld4qoG+Oht7HKiBUsb7FWwX87442Pf8fAAAA//8E160ZAAAABklEQVQDAPZaopAYesRcAAAAAElFTkSuQmCC';
         // Quadros PNG extraídos do GIF original para reprodução confiável no canvas.
         const protagonistIdleTexture = new Image();
         protagonistIdleTexture.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACrElEQVR4AeyYP0seQRCH5wIJaIoQXhKrpElSBKKfIY2QVgKWtqKgIGilIIKdgqCgn0FBbEU/g40W2thYiCKCNgo2J79i4Dg8bv/MzC68F3jY3O3u7Mwze4K+oz7/1wno8wtA3Q3obkCfGzD7BLa/b5Y+WPXFTIBVQb7nqAmod9s3Md7vu893vZoA30RSrRcXUO/c0KcXCsFKiLgAq8SlzlETwF0PTTR2v+u5agJcE0i9TkzA/vB6CaQ7h5hAS5SYAK0EpePW43UC6kb67Tn6BuD7BNricAaQPidagHRC1vGyETD475mqWInIRoBVwfVzkgvgrnNiT4cDBPiZx/9n8wXgZ6kxuQCpQkLjJBNQ7zwXwO95RNcBz0uPyQRIFxIaL1oAugNcExhZ+EHg5/AfcsE1bui6aAGhB+eyz1zA6dolVWkS8WtirABN81LvzQVIJS4VR0wAfg68RVOiu9cPBBbnTgjwrUDXQdM+6fdiAqQTk4rXFkddAN8KdBs0JYQ5gN/4QNM66ffqAqQTlo6nLmC8t1QCThxdBvycelQXkLrAtvPVBMz0VkrQlgDP//34lcDt4wcC/F57VBOgnbhUfDUBW/fLBRii9/QW6HaVg7tzAtNXswWQKrAtjpqAtoNzmVcXgFsALp5uCMxujBAYXf1GVca+/CZgLUZdgHVBvudlIwDfP/AtIHZ9NgJiCwndby5gevKIACeM/4PPgz0C/N5qNBdgVZjrOckEoOvANVGtdckEaBXkGze5AHz3wDdxqfXJBUgVEhonmQB0HYQmLrUvmQCpAmLjqAsYHZgqASeKrgN+Tj2qC0hdYNv52QnA3w9BW+JS89kJkCrMNY66gOPnnaLK3v1q4YJrAbHr1AXEJqi9vxOgbTj3+N0NyL1D2vl1N0DbsHb82PivAAAA//+Ed8IRAAAABklEQVQDAAB2FJA4vzudAAAAAElFTkSuQmCC';
+        const protagonistCorruptTexture = new Image();
+        protagonistCorruptTexture.src = 'data:image/gif;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
         const protagonistWalkFrames = Array.from({ length: 8 }, () => new Image());
         const protagonistWalkFrameDuration = 150;
         protagonistWalkFrames[0].src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAFlSURBVHhe7ZkxasNAEEXVpjWkzQ1yDF8hd3C69G7Sp0nj2qQ3OUbukMsoxDCFHixaLRKa2fkPXmGL1cz/2FjgYRBCCCE25/L0OS6R58PDgHPyfDgYqFXeNwwM0irv6x4GuD1/NKkCohfAQK3y/u5JWwAXX1vOcwcXXlvOcwcXXlvOcwcXXlvOcwMX3VrO3x0uuLWcvztcsNWft+tEXjc5f3e4YKtpCwgb3OCiS01bAIOX5Dx3MFitDFqS89zCgCV/v74XyTluYdCSDDgn57iFQWtl4HDBDQarlcHDFlCCgc2Xw3mivc/z4WHwdAUYDMoCeJ3nw8OADM7rPB8WBpxTBfRSwOvj+/gvA5bkHyq8XzjSF2BYEZSBjw+nuzwfHgZPV4BhAfnIa3b30ScqYKaA9F+BNAWwCHttP4c81w0qAAVQFZC1AD4S81w3MHj6AhhcBfRaQG1wFaACOi0ifQFCCCGEcMsf+MmHDqQM//EAAAAASUVORK5CYII=';
@@ -1134,7 +1328,7 @@
         const bossTextureBounds = {
             nurse:       { left: 18, right: 45, bottom: 55, height: 52 },
             cleaner:     { left: 16, right: 47, bottom: 57, height: 46 },
-            surgeon:     { left: 22, right: 39, bottom: 57, height: 54 },
+            surgeon:     { left: 22, right: 39, bottom: 63, height: 60 },
             pharmacist:  { left: 8,  right: 57, bottom: 55, height: 46 },
             radiologist: { left: 16, right: 45, bottom: 55, height: 50 },
             security:    { left: 20, right: 45, bottom: 55, height: 48 }
@@ -1215,17 +1409,10 @@
         function startBossDeathAnimation() {
             boss.state = 'DYING';
             boss.deathTimer = 100;
+            registerBossDefeat('INFIRMARY');
             AudioSystem.playBossDieSound();
             showInteractionMsg("O boss está sendo exorcizado!");
 
-            if (GameState.current === 'INFIRMARY' && !achievementInfirmaryUnlocked) {
-                achievementInfirmaryUnlocked = true;
-                const achInfEl = document.getElementById('ach-infirmary');
-                if (achInfEl) {
-                    achInfEl.innerHTML = "[ Desbloqueado ] A Enfermaria";
-                    achInfEl.style.color = "#a855f7";
-                }
-            }
         }
 
         function drawPixelMatrix(ctx, matrix, palette, startX, startY, pixelSize = 1) {
@@ -1345,14 +1532,6 @@
                         document.getElementById('darkness-overlay').style.opacity = '0';
                         AudioSystem.playBossDieSound();
 
-                        if (!achievementOfficeUnlocked) {
-                            achievementOfficeUnlocked = true;
-                            const achEl = document.getElementById('ach-office');
-                            if (achEl) {
-                                achEl.innerHTML = "[ Desbloqueado ] O Escritório";
-                                achEl.style.color = "#f97316";
-                            }
-                        }
                     } else {
                         this.nextAttack();
                     }
@@ -1366,6 +1545,7 @@
                     this.stateTimer -= 1 * gameSpeedMultiplier;
                     if (this.stateTimer <= 0) {
                         this.active = false;
+                        registerBossDefeat('ROOM_ORANGE');
                         bossDefeatedSequence = true;
                         waitingForPlayerContinue = true;
                         document.getElementById('victory-screen').classList.remove('hidden');
@@ -1396,10 +1576,11 @@
                                     this.eyeLookTimers[index] = (this.eyeLookTimers[index] || 0) + (1 * gameSpeedMultiplier);
 
                                     // Precisa de um tempo olhando antes de dar 1 de dano
-                                    if (this.eyeLookTimers[index] >= 25) { 
+                                    if (this.eyeLookTimers[index] >= 15) { 
                                         if (damageFlashTimer <= 0) {
                                             AudioSystem.playDamageSound();
                                             damageFlashTimer = 35;
+                                            registerPlayerDamage();
                                             playerHealth--;
                                             eye.hasDamaged = true; // Apenas 1 de dano por olho
                                             updateHealthDisplay();
@@ -1430,6 +1611,7 @@
                             if (hit && damageFlashTimer <= 0) {
                                 AudioSystem.playDamageSound();
                                 damageFlashTimer = 35;
+                                registerPlayerDamage();
                                 playerHealth--;
                                 updateHealthDisplay();
                                 if (playerHealth <= 0) triggerGameOver();
@@ -1497,7 +1679,7 @@
                     ctx.globalAlpha = (Math.floor(Date.now() / 80) % 2 === 0) ? 0.4 : 1.0;
                 }
 
-                drawBossTexture(ctx, bossTextures.security, screenX, screenY, bossTextureBounds.security);
+                drawBossTexture(ctx, this.state === 'ATK2_LASER' ? bossSecurityLaserTexture : bossTextures.security, screenX, screenY, bossTextureBounds.security);
                 ctx.restore();
 
                 // DESENHO DOS 3 OLHOS (ATAQUE 1)
@@ -1637,6 +1819,7 @@
                     this.stateTimer -= 1 * gameSpeedMultiplier;
                     if (this.stateTimer <= 0) {
                         this.active = false;
+                        registerBossDefeat('ROOM_AQUA');
                         bossDefeatedSequence = true;
                         waitingForPlayerContinue = true;
                         document.getElementById('victory-screen').classList.remove('hidden');
@@ -1673,7 +1856,7 @@
                                 const fY = Infirmary.floors[i];
                                 const ghostFromLeft = (this.side === 'left'); 
                                 ghosts.push({
-                                    x: ghostFromLeft ? 35 : 285,
+                                    x: ghostFromLeft ? 24 : 296,
                                     y: fY,
                                     vx: ghostFromLeft ? Boss3Config.ghostSpeed : -Boss3Config.ghostSpeed,
                                     alpha: 0.9,
@@ -1698,6 +1881,7 @@
                     if (dist < 26 && damageFlashTimer <= 0) {
                         AudioSystem.playDamageSound();
                         damageFlashTimer = 40;
+                        registerPlayerDamage();
                         playerHealth--;
                         updateHealthDisplay();
 
@@ -1859,15 +2043,6 @@
                         this.stateTimer = 100;
                         AudioSystem.playBossDieSound();
 
-                        if (!achievementOperatingRoomUnlocked) {
-                            achievementOperatingRoomUnlocked = true;
-                            const achOpEl = document.getElementById('ach-operating-room');
-                            if (achOpEl) {
-                                achOpEl.innerHTML = "[ Desbloqueado ] A Sala de Operações";
-                                achOpEl.style.color = "#a855f7";
-                            }
-                            showInteractionMsg("Nova Conquista Desbloqueada!");
-                        }
                     } else {
                         this.state = 'WAITING_NEXT_ATTACK';
                         this.stateTimer = Boss2Config.delayBetweenAttacks;
@@ -1886,6 +2061,7 @@
                     this.stateTimer -= 1 * gameSpeedMultiplier;
                     if (this.stateTimer <= 0) {
                         this.active = false;
+                        registerBossDefeat('ROOM_BLUE');
                         bossDefeatedSequence = true;
                         waitingForPlayerContinue = true;
                         document.getElementById('victory-screen').classList.remove('hidden');
@@ -1994,6 +2170,8 @@
                             AudioSystem.playDamageSound();
                             damageFlashTimer = 35;
 
+                            registerPlayerDamage();
+
                             playerHealth -= p.damage;
                             updateHealthDisplay();
 
@@ -2097,6 +2275,7 @@
             mushrooms: [],    
             potionsInAir: [],  
             slownessTimer: 0,
+            controlInversionTimer: 0,
 
             init() {
                 this.active = true;
@@ -2108,6 +2287,7 @@
                 this.mushrooms = [];
                 this.potionsInAir = [];
                 this.slownessTimer = 0;
+                this.controlInversionTimer = 0;
                 this.relocateAndPrepare();
 
                 showInteractionMsg("QUARTO BOSS ATIVADO: A FARMACÊUTICA!");
@@ -2121,6 +2301,7 @@
                 this.mushrooms = [];
                 this.potionsInAir = [];
                 this.slownessTimer = 0;
+                this.controlInversionTimer = 0;
             },
 
             resetDeck() {
@@ -2185,15 +2366,6 @@
                         this.stateTimer = 100;
                         AudioSystem.playBossDieSound();
 
-                        if (!achievementPharmacyUnlocked) {
-                            achievementPharmacyUnlocked = true;
-                            const achEl = document.getElementById('ach-pharmacy');
-                            if (achEl) {
-                                achEl.innerHTML = "[ Desbloqueado ] A Farmácia";
-                                achEl.style.color = "#22c55e";
-                            }
-                            showInteractionMsg("Nova Conquista Desbloqueada!");
-                        }
                     } else {
                         this.relocateAndPrepare();
                     }
@@ -2205,14 +2377,14 @@
             update() {
                 if (!this.active || GameState.isPaused) return;
 
-                if (this.slownessTimer > 0) {
-                    this.slownessTimer -= 1 * gameSpeedMultiplier;
-                }
+                if (this.slownessTimer > 0) this.slownessTimer = Math.max(0, this.slownessTimer - gameSpeedMultiplier);
+                if (this.controlInversionTimer > 0) this.controlInversionTimer = Math.max(0, this.controlInversionTimer - gameSpeedMultiplier);
 
                 if (this.state === 'DYING') {
                     this.stateTimer -= 1 * gameSpeedMultiplier;
                     if (this.stateTimer <= 0) {
                         this.active = false;
+                        registerBossDefeat('ROOM_GREEN');
                         bossDefeatedSequence = true;
                         waitingForPlayerContinue = true;
                         document.getElementById('victory-screen').classList.remove('hidden');
@@ -2266,7 +2438,7 @@
                 let targetX = Player.x;
                 let targetY = Player.y;
 
-                if (['yellow', 'orange', 'green'].includes(color)) {
+                if (['yellow', 'orange'].includes(color)) {
                     const randomFloorIdx = Math.floor(Math.random() * Infirmary.floors.length);
                     targetY = Infirmary.floors[randomFloorIdx];
                     targetX = 40 + Math.random() * 240;
@@ -2304,25 +2476,29 @@
                     p.rotation += 0.25 * gameSpeedMultiplier;
 
                     const distToPlayer = Math.hypot(p.x - Player.x, p.y - (Player.y - 12));
-                    if (distToPlayer < 15 && damageFlashTimer <= 0) {
+                    if (distToPlayer < 15) {
                         this.applyPotionEffect(p.color, Player.x, Player.y);
                         this.potionsInAir.splice(i, 1);
                         continue;
                     }
 
                     if (p.y >= p.targetY) {
+                        this.applyPotionImpactGround(p.color, p.x, p.targetY);
                         this.potionsInAir.splice(i, 1);
                     }
                 }
 
                 for (let i = this.puddles.length - 1; i >= 0; i--) {
                     let puddle = this.puddles[i];
+                    puddle.life -= gameSpeedMultiplier;
+                    if (puddle.life <= 0) { this.puddles.splice(i, 1); continue; }
                     const playerFloorY = Infirmary.floors[Player.currentFloor];
                     if (Math.abs(playerFloorY - puddle.y) < 5 && Math.abs(Player.x - puddle.x) < 18) {
                         if (puddle.color === 'yellow') {
                             if (damageFlashTimer <= 0) {
                                 AudioSystem.playDamageSound();
                                 damageFlashTimer = 35;
+                                registerPlayerDamage();
                                 playerHealth--;
                                 updateHealthDisplay();
                                 showInteractionMsg("Pisou no veneno amarelo! (-1 Vida)");
@@ -2330,7 +2506,10 @@
                                 this.puddles.splice(i, 1);
                             }
                         } else if (puddle.color === 'orange') {
-                            this.slownessTimer = 150; 
+                            if (!puddle.slowApplied) {
+                                this.slownessTimer = 420;
+                                puddle.slowApplied = true;
+                            } 
                             showInteractionMsg("Pisou na poça laranja! Lento!");
                         }
                     }
@@ -2352,6 +2531,7 @@
                 if (color === 'red') {
                     AudioSystem.playDamageSound();
                     damageFlashTimer = 35;
+                    registerPlayerDamage();
                     playerHealth--;
                     updateHealthDisplay();
                     showInteractionMsg("Atingido por Poção Vermelha! (-1 Vida)");
@@ -2364,21 +2544,20 @@
                     }
                 } else if (color === 'purple') {
                     const overlay = document.getElementById('darkness-overlay');
-                    overlay.style.opacity = '1';
-                    darknessTicks = 180;
+                    overlay.style.opacity = '0.68';
+                    darknessTicks = 300;
                     showInteractionMsg("Efeito da Poção Roxa: Visão Escurecida!");
+                } else if (color === 'green') {
+                    this.controlInversionTimer = 300;
+                    showInteractionMsg("A Poção Verde inverteu os controles por 5 segundos!");
                 }
             },
 
             applyPotionImpactGround(color, x, y) {
                 if (color === 'yellow') {
-                    this.puddles.push({ color: 'yellow', x: x, y: y });
+                    this.puddles.push({ color: 'yellow', x: x, y: y, life: 300, maxLife: 300 });
                 } else if (color === 'orange') {
-                    this.puddles.push({ color: 'orange', x: x, y: y });
-                } else if (color === 'green') {
-                    this.mushrooms.push({ x: x, y: y });
-                } else {
-                    this.applyPotionEffect(color, x, y);
+                    this.puddles.push({ color: 'orange', x: x, y: y, life: 300, maxLife: 300, slowApplied: false });
                 }
             },
 
@@ -2457,6 +2636,7 @@
                     const py = Math.floor(puddle.y - cameraY);
 
                     ctx.save();
+                    ctx.globalAlpha = Math.min(1, puddle.life / 60);
                     ctx.fillStyle = this.getColorHex(puddle.color);
                     ctx.beginPath();
                     ctx.ellipse(px, py + 2, 12, 3, 0, 0, Math.PI * 2);
@@ -2583,14 +2763,6 @@
                         this.stateTimer = 100;
                         AudioSystem.playBossDieSound();
 
-                        if (!achievementXrayUnlocked) {
-                            achievementXrayUnlocked = true;
-                            const achEl = document.getElementById('ach-xray');
-                            if (achEl) {
-                                achEl.innerHTML = "[ Desbloqueado ] Raio-X";
-                                achEl.style.color = "#eab308";
-                            }
-                        }
                     } else {
                         this.nextAttack();
                     }
@@ -2604,6 +2776,7 @@
                     this.stateTimer -= 1 * gameSpeedMultiplier;
                     if (this.stateTimer <= 0) {
                         this.active = false;
+                        registerBossDefeat('ROOM_YELLOW');
                         bossDefeatedSequence = true;
                         waitingForPlayerContinue = true;
                         document.getElementById('victory-screen').classList.remove('hidden');
@@ -2636,6 +2809,7 @@
                     if (distToPlayer < this.auraRadius && damageFlashTimer <= 0) {
                         AudioSystem.playDamageSound();
                         damageFlashTimer = 35;
+                        registerPlayerDamage();
                         playerHealth--;
                         updateHealthDisplay();
                         if (playerHealth <= 0) triggerGameOver();
@@ -2665,7 +2839,7 @@
                         this.startNextShuffleStep();
                     }
                 } else if (this.state === 'ATK3_SHUFFLING') {
-                    this.boxShuffleTimer += 0.05 * gameSpeedMultiplier;
+                    this.boxShuffleTimer += 0.03 * gameSpeedMultiplier;
                     const progress = Math.min(1, this.boxShuffleTimer);
 
                     this.boxes.forEach(box => {
@@ -2697,6 +2871,7 @@
                     if (distToPlayer < 14 && damageFlashTimer <= 0) {
                         AudioSystem.playDamageSound();
                         damageFlashTimer = 35;
+                        registerPlayerDamage();
                         playerHealth -= s.damage;
                         updateHealthDisplay();
                         if (playerHealth <= 0) triggerGameOver();
@@ -2744,7 +2919,9 @@
                             this.takeDamage(1);
                         } else {
                             AudioSystem.playDamageSound();
+                            unlockAchievement('wrong-box');
                             damageFlashTimer = 35;
+                            registerPlayerDamage();
                             playerHealth--;
                             updateHealthDisplay();
                             if (playerHealth <= 0) triggerGameOver();
@@ -2901,6 +3078,7 @@
                 if (boss.deathTimer <= 0) {
                     bossActive = false;
                     boss = null;
+                    registerBossDefeat('INFIRMARY');
                     bossDefeatedSequence = true;
                     waitingForPlayerContinue = true;
                     document.getElementById('victory-screen').classList.remove('hidden');
@@ -2938,7 +3116,7 @@
                             const fromLeft = i % 2 === 0;
                             
                             ghosts.push({
-                                x: fromLeft ? (40 + (i * 12)) : (280 - (i * 12)),
+                                x: fromLeft ? (28 + (i * 8)) : (292 - (i * 8)),
                                 y: targetFloorY,
                                 vx: fromLeft ? 0.7 : -0.7,
                                 alpha: 0.9,
@@ -2967,6 +3145,7 @@
                 if (dist < 26 && damageFlashTimer <= 0) {
                     AudioSystem.playDamageSound();
                     damageFlashTimer = 40; 
+                    registerPlayerDamage();
                     playerHealth--;
                     updateHealthDisplay();
 
@@ -3071,7 +3250,7 @@
                         const spawnY = Infirmary.floors[floorIndex];
 
                         ghosts.push({
-                            x: fromLeft ? 35 : 285,
+                            x: fromLeft ? 24 : 296,
                             y: spawnY,
                             vx: fromLeft ? (0.6 + Math.random() * 0.4) : -(0.6 + Math.random() * 0.4),
                             alpha: 0.9,
@@ -3094,16 +3273,16 @@
                 let currentY = g.y + Math.sin(g.bobTimer) * 2;
 
                 if (Boss3Controller.active && Boss3Controller.state === 'GHOST_CROSS_CORRIDOR') {
-                    if (g.x <= 35 || g.x >= 285) {
+                    if (g.x <= 24 || g.x >= 296) {
                         ghosts.splice(i, 1);
                         continue;
                     }
                 } else {
-                    if (g.x <= 30) {
-                        g.x = 30;
+                    if (g.x <= 24) {
+                        g.x = 24;
                         g.vx = Math.abs(g.vx);
-                    } else if (g.x >= 290) {
-                        g.x = 290;
+                    } else if (g.x >= 296) {
+                        g.x = 296;
                         g.vx = -Math.abs(g.vx);
                     }
                 }
@@ -3133,6 +3312,8 @@
                     AudioSystem.playDamageSound();
                     damageFlashTimer = 40; 
                     
+                    registerPlayerDamage();
+                    
                     playerHealth--;
                     updateHealthDisplay();
 
@@ -3144,6 +3325,11 @@
                 }
             }
         }
+
+        const protagonistClimbUpTexture = new Image();
+        protagonistClimbUpTexture.src = 'data:image/gif;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+        const protagonistClimbDownTexture = new Image();
+        protagonistClimbDownTexture.src = 'data:image/gif;base64,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AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
         const walkFrames = [
             [
@@ -3193,6 +3379,8 @@
             isMoving: false,
             frameIndex: 0,
             animTimer: 0,
+            floorAnimationDirection: 0,
+            floorAnimationTimer: 0,
             paralysisTimer: 0, 
 
             palette: {
@@ -3205,6 +3393,11 @@
 
             update() {
                 if (bossDefeatedSequence || GameState.isPaused) return;
+
+                if (this.floorAnimationTimer > 0) {
+                    this.floorAnimationTimer = Math.max(0, this.floorAnimationTimer - 16 * gameSpeedMultiplier);
+                    if (this.floorAnimationTimer === 0) this.floorAnimationDirection = 0;
+                }
 
                 if (this.paralysisTimer > 0) {
                     this.paralysisTimer -= 1 * gameSpeedMultiplier;
@@ -3230,12 +3423,20 @@
                     let moveX = 0;
                     if (GameState.keys.a) { moveX -= 1; this.direction = -1; this.isMoving = true; }
                     if (GameState.keys.d) { moveX += 1; this.direction = 1; this.isMoving = true; }
+                    if (Boss4Controller.active && Boss4Controller.controlInversionTimer > 0) moveX *= -1;
+                    if (moveX !== 0) this.direction = Math.sign(moveX);
 
                     this.x += moveX * currentSpeed * gameSpeedMultiplier;
                     this.x = Math.max(35, Math.min(this.x, 285));
 
                     const targetY = Infirmary.floors[this.currentFloor];
-                    this.y += (targetY - this.y) * (0.25 * gameSpeedMultiplier);
+                    const floorMoveEase = this.floorAnimationTimer > 0 ? 0.24 : 0.25;
+                    this.y += (targetY - this.y) * (floorMoveEase * gameSpeedMultiplier);
+                    if (Math.abs(targetY - this.y) < 1) {
+                        this.y = targetY;
+                        this.floorAnimationTimer = 0;
+                        this.floorAnimationDirection = 0;
+                    }
                 }
 
                 if (this.isMoving) {
@@ -3249,11 +3450,17 @@
 
             changeFloor(dir) {
                 if ((GameState.current !== 'INFIRMARY' && GameState.current !== 'ROOM_BLUE' && GameState.current !== 'ROOM_AQUA' && GameState.current !== 'ROOM_GREEN' && GameState.current !== 'ROOM_YELLOW' && GameState.current !== 'ROOM_ORANGE' && GameState.current !== 'ROOM_RED') || bossDefeatedSequence || GameState.isPaused || this.paralysisTimer > 0) return;
+                if (Boss4Controller.active && Boss4Controller.controlInversionTimer > 0) dir *= -1;
                 if (GameState.current === 'ROOM_RED' && Boss7.active) Boss7.floorAction = dir;
+                const previousFloor = this.currentFloor;
                 if (dir === -1 && this.currentFloor < Infirmary.floors.length - 1) {
                     this.currentFloor++;
                 } else if (dir === 1 && this.currentFloor > 0) {
                     this.currentFloor--;
+                }
+                if (this.currentFloor !== previousFloor) {
+                    this.floorAnimationDirection = dir;
+                    this.floorAnimationTimer = 650;
                 }
             },
 
@@ -3271,11 +3478,15 @@
                 }
 
                 const walkTextureFrameIndex = Math.floor(Date.now() / protagonistWalkFrameDuration) % protagonistWalkFrames.length;
-                const playerTexture = this.isMoving ? protagonistWalkFrames[walkTextureFrameIndex] : protagonistIdleTexture;
+                const floorTexture = this.floorAnimationTimer > 0
+                    ? (this.floorAnimationDirection < 0 ? protagonistClimbUpTexture : protagonistClimbDownTexture)
+                    : null;
+                const playerTexture = floorTexture || (this.isMoving ? protagonistWalkFrames[walkTextureFrameIndex] : protagonistIdleTexture);
                 if (playerTexture.complete && playerTexture.naturalWidth) {
                     // As imagens mantêm 64x64 nativos; os limites transparentes alinham os pés ao chão.
                     ctx.imageSmoothingEnabled = false;
-                    ctx.drawImage(playerTexture, -30, -56);
+                    if (floorTexture) ctx.drawImage(playerTexture, -30, -56, 64, 64);
+                    else ctx.drawImage(playerTexture, -30, -56);
                 } else {
                     const currentMap = walkFrames[this.frameIndex];
                     const width = currentMap[0].length * this.pixelScale;
@@ -3751,6 +3962,7 @@
         const ctx = canvas.getContext('2d');
 
         function gameLoop() {
+            AudioSystem.updateMusicScene();
             if (GameState.isPaused) { requestAnimationFrame(gameLoop); return; }
             if(darknessTicks>0) { darknessTicks-=gameSpeedMultiplier; if(darknessTicks<=0) document.getElementById('darkness-overlay').style.opacity='0'; }
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -3887,6 +4099,7 @@
                         let dist = Math.hypot(p.x - g.x, p.y - g.y);
                         if (dist < 20) {
                             ghosts.splice(j, 1);
+                            registerGhostKills(1);
                             projectileHit = true;
                             AudioSystem.playGhostDieSound();
                             showInteractionMsg("Fantasma exorcizado!");
@@ -4130,8 +4343,6 @@
                 document.getElementById(modalId).classList.remove('hidden');
             });
         }
-
-        setupModal('btn-inventory', 'modal-inventory');
         setupModal('btn-achievements', 'modal-achievements');
         setupModal('btn-settings', 'modal-settings');
 
@@ -4156,11 +4367,11 @@
         });
 
         document.getElementById('btn-reset-controls').addEventListener('click', () => {
-            document.getElementById('vol-music').value = 70;
+            document.getElementById('vol-music').value = 90;
             document.getElementById('vol-sfx').value = 80;
             document.getElementById('game-speed').value = 100;
             document.getElementById('platform-select').value = 'pc';
-            musicVolume = 0.7;
+            AudioSystem.setMusicVolume(90);
             gameSpeedMultiplier = 1;
             AudioSystem.setSfxVolume(80);
         });
@@ -4182,6 +4393,15 @@
 
             if (key === 'e' && GameState.current === 'CORRIDOR') {
                 Corridor.checkInteraction(Player.x);
+            }
+            if (!e.repeat && !bossDefeatedSequence && Player.paralysisTimer <= 0 &&
+                ['INFIRMARY','ROOM_BLUE','ROOM_AQUA','ROOM_GREEN','ROOM_YELLOW','ROOM_ORANGE','ROOM_RED'].includes(GameState.current)) {
+                if (rawKey === 'q') {
+                    spawnApple(Player.x, Player.y, Player.direction);
+                    showInteractionMsg('Maçã arremessada!');
+                } else if (rawKey === 'e') {
+                    triggerDoorsCrucifix(Player.x, Player.y, Player.direction);
+                }
             }
             if (key === 'w' && !e.repeat) {
                 Player.changeFloor(-1);
@@ -4229,7 +4449,7 @@
         const consultColors=['#a855f7','#3b82f6','#22d3ee','#22c55e','#eab308','#f97316'];
         const consultNames=['ROXO','AZUL','CIANO','VERDE','AMARELO','LARANJA'];
         const consultCaption=document.createElement('div');
-        consultCaption.style.cssText='position:absolute;bottom:14px;left:5%;width:90%;text-align:center;font:12px monospace;color:white;background:rgba(0,0,0,.85);padding:9px;line-height:1.5;pointer-events:none;display:none;z-index:25;white-space:pre-line';
+        consultCaption.className='boss7-caption';consultCaption.style.display='none';
         document.getElementById('ui-layer').appendChild(consultCaption);
         function enterRedRoom(){
             if(Corridor.doors[6].isLocked) return;
@@ -4250,46 +4470,54 @@
         }
         function finishGame(){
             if(!whiteKey||GameState.isPaused)return;
+            unlockAchievement('white-door');
+            if (currentRunDeaths === 0) unlockAchievement('no-deaths');
+            if (!currentRunTookDamage) unlockAchievement('no-damage');
             GameState.current='ENDING';clearMovement();consultCaption.style.display='none';
             document.getElementById('btn-pause').classList.add('hidden');
             const end=document.createElement('div');end.id='consult-ending';
             end.style.cssText='position:absolute;inset:0;background:black;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:45px;pointer-events:auto';
             const title=document.createElement('div');title.textContent='fim?';title.style.cssText='color:white;font-size:38px';
             const retry=document.createElement('button');retry.className='btn';retry.textContent='Tentar novamente';
-            retry.onclick=()=>{resetGameSession();end.remove();Player.x=60;Player.y=120;Player.currentFloor=0;GameState.current='CORRIDOR';document.getElementById('btn-pause').classList.remove('hidden');};
+            retry.onclick=()=>{resetGameSession();currentRunDeaths=0;currentRunTookDamage=false;bossAttemptDeaths={};savedCorridorX=60;end.remove();Player.x=60;Player.y=120;Player.currentFloor=0;GameState.current='MENU';document.getElementById('game-over-screen').classList.add('hidden');document.getElementById('main-menu').classList.remove('hidden');};
             end.append(title,retry);document.getElementById('ui-layer').appendChild(end);
         }
-        function consultDamage(){
+        function consultDamage(source = ''){
             if(GameState.isPaused||GameState.current!=='ROOM_RED'||bossDefeatedSequence||damageFlashTimer>0)return;
+            registerPlayerDamage(source);
             playerHealth--;damageFlashTimer=50;AudioSystem.playDamageSound();updateHealthDisplay();
             if(playerHealth<=0){consultCaption.style.display='none';triggerGameOver();}
         }
         // Textura original da mão apontando (imagem PNG incorporada para manter o HTML independente).
+        const boss7HeadTexture=new Image();
+        boss7HeadTexture.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACs0lEQVR4AeyYvU4rMRCFvZSpI1JCC23qCEpaKoREy1PRg6h4BVDqbaGFMjwAJYtPoiOtJgzj/bHw7vrqnmt57BmPvxkn0T1wE/+TAUy8AVzugNwBEyeQn8DEGyB/COYnkJ/AxAnkJzDxBsjfApN7ArLjVQB3i7PqL8lAQ52rAIZ6oaZ5qwBuNy9FXTIwu0PahzZXAQztIm3zDQbAbuBBc1c46GlxXkG0pzIiJ4idylHmFwxAOo5lHgwANCFUfafKd0Blcvjw3yZNZAY0NiBH6KK8d9BN+eCgXc7FnncwgD3PkRhMAKAJzd2u4hx5/8vNcwFxLqtNuzYe+grVRX9tv7SXvsPqQtUhuU/mzXUTADeOdVQBrD1ZSCO38r8TIIJpWjn6yZHdYMV7W6wqaOa+HXTqOwmS8V6X1w5CrpBcVwHIjWOdmwBm/ua/yZu3f61KbTe1+EfrBJ53XD66urQj0B2Qtm4C0BzHYlcBsOq8KCjWhfcHcT21Ee8eOtmsC0jLTwWgOQzNbuU7GAB8+/xs0C6GqkNL/y0FaftoHwwAJtz3aALgu5cHz/x/J0LSHmtuVZ7navlyXY4mAOkwtrkKAO8HkhdG1SFpjz3/9L/oIO2c9+WVg/CJD2n7pF0FIDeOdW4CAE2IAL78b2+Ic23km7VGzV/aj/ynOoQuqAtVh5AjJP2suQnACjD09WAAoFsXqgFpAFglbb2tHWfWxZzaxgsG0PaA1P06A2A1tIu27QT6WfG1c0PtnQGEHpTqvt4AWJViReUowXDdiif92s57A9A2gf/26x0AK8fRuiArzjHUz4obut47gNCDY+1rGjc6AFY0dGx6ga77owPommBs/wwgNuHU4+cOSL1CsfPLHRCbcOrxcwekXqHY+eUOiE049fi5A1KvUOz8cgfEJhw7ftf4PwAAAP//Vsf15gAAAAZJREFUAwATu4CQ9kmJ4QAAAABJRU5ErkJggg==';
+        const boss7FinalVulnerableTexture=new Image();
+        boss7FinalVulnerableTexture.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACfElEQVR4AeyZi5KDMAhFZf//n12ge2cSxvoIoMmaTijGAEkOaGv7s7z8NQG8vACWWQGzAl5OYF4CLy+AkJvgyhD3hIdDm53LFXxeAi58H2diVQp3q4aMVScbOhpnXddFpMF/02VWwCaWtpOaoQ1XVAfGj7QNofaSdRE76O3PCvASZH/NEGvbbObtuPYlq6XwScRTjTE+r42IFiKSY3kTkeNmeV0FWFKZADSDdsKz/Z3Mnw1xyi4TwKkFPG0UAUCuQ5HQvRCRXutEH10EJz4WYeVvEQD8q3gwQiQAyYpI1HYk1pZExdc4kQA04GhvGQBs1iomuLtDV4MPdDIAPLCN9invAICK0FUSUXV3J6r7bER/wiq/3QEgfxeOGe4AcPUb4VV7x/aXkJ/EXAt42jmzAk5lEp8GVjOYU/5s52qZAFwLu8u5GwBEpJ8Od20c83QDAAuK1kfxJoAjQv99PKMCou/e0fGqnGYAqCbovdMzAGJ4IqzyWs8A8nZdRI4EEHKtEpF+H+Bvhmj4LzAkfrF3PYwEoAFHe/MAQEagv+2deECE1akmtsQvrQR4cDmkVIIHANY2tG4BgIxrpnZ2j3HY75guml3JMhtt2tuKYLuQ1gIgZOJegrQAQGbtHr6dt3boq/1RZjfG1Q9BvLoFgHfOrvw9AHCthmakoIO4Vhcm/kMPAP/sCRGuhvQAQGbsnN/OW7su+h4AXWzAu4gJwEtwdP9ZAaNn0Lv+WQFegqP7zwoYPYPe9WdWAJ4VLq1RfhMQYacmf/a71DIBXFrIU8YZAJoyh+d+6AJIU7zCf/cwA8DuhL0NZgDA0+CRBosjO4zDPlRnAAhd4FEw7/gvAAAA///hw/HBAAAABklEQVQDAJvgsIELu8BlAAAAAElFTkSuQmCC';
         const boss7PointingHandTexture=new Image();
-        boss7PointingHandTexture.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAC0SURBVHhe7dUxCsIwFIDhniEnsaIXcvMIjm7eytFjKQ0E4sMSBdMs3wdvKE2X/rx2mgAAAAAAAAAAAAAAAAAAAAAAAKZb2j8f6ZjnlHZ54hk2ssSog1zSLMYoJcY9HXKMeJ+NxSDlepl4ls7ql18+V5+mPnf2f+nj2xgxjBgdtGJc0/w28Xn+rBWknvgsHbSC2I4BWlFsxwBrQWzHQGubEs8BAAAAAAAAAAAAAAAAAAAAwO9eKXrO6hSJEqEAAAAASUVORK5CYII=';
+        boss7PointingHandTexture.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA40lEQVR4AeyWPQ4CIRCFB0tqE0pra+uNXsFDeCoP4RXcbG1tbckFKEUeKwkmZuVPzSazyQN2AzOPb6bYBf35YQNMgAkwASbABJjAfAhcVWehi9paaHAzdFI7C5X+VnwkcHOJIEnjVkl3n0v6kWhJ1q+Obp9fZA5j1MRD70x0uhd7fRYH3YvEMC/bsgzEJ0FiU5g0jpNtIFAwriTogThYyTrbQEgCAjK8VMzZBsyzCUHgJyVYuTpDuGSc3OBDAyUTgIm1HgSEm6P7G+R3ndQiSkWMZAIVOSaPsgEm8HUCkx1IRA8AAAD//waOjOoAAAAGSURBVAMAIuU9QXhDJygAAAAASUVORK5CYII=';
         // PNGs originais fornecidos para as mãos que seguram a arena.
         const boss7LeftGripTexture=new Image();
-        boss7LeftGripTexture.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAACiSURBVHhe7dXBCQIxEEDRLSKtuIJ12YJXj14tyqPFrIwYCIOCIGQ8vAcDy+b4yWRZAAAAAAAAAAAAAAAAAADgW5e232Lyfwr0GNfXxPe5reJUGGPc2+E5Pcqprdux7YSZJcfI50yWg4w3JMbamuxTkBgrq8C7IDerq1aOks8pMEaJG+Lt+AM9SIy3AwAAAAAAAAAAAAAAAAAAAAAAAAAAfvAA7Xp0amthQHkAAAAASUVORK5CYII=';
+        boss7LeftGripTexture.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA2ElEQVR4AeyVOw6DMBBEl5TUkVymTp0aJVfIIXKqHCJXSESdOnVKX8AlZgewoALjtYSEFmmE+NjzmLHFgTY+FEAT0AQ0AU1AE9AEkhN4mqvP8SePBviZyn/ZFKr5fKQihz8tAvzZDCr51ZIa6kV0t++OQJrEIsD0MwGB64v9dOYvcxPXsAoA5tBYg6fHAIP7KUoCCDVUQnMAJwGcbV2gBmn/qwEcL0LHixG7IEf/UQAnjhkK5g6jBkn7xzTRFYTY0TsUtiEmkSgaQGIyN1YBNIH9JzC3A/CsBQAA//+HNK8UAAAABklEQVQDAPXvQ0F/63emAAAAAElFTkSuQmCC';
         const boss7RightGripTexture=new Image();
-        boss7RightGripTexture.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAACzUlEQVR4AeyUsYoUURBFewz9gQ32SwxEYQUjAyMDIwO/ysDIwMjASHBBMfBLNlgwNl1fwbYME1TDhfu6avYsW/R0F1Wv5pyuebTwV4oAQkrpWBaEIKQYgWLjsCEIKUag2DhsCEKKESg2DhuCkGIEio3j2ZBiX7LTOAgpZgshCClGoNg4bAhCihEoNg4bgpBiBIqNw4YgpBiBYuN02pBi6DzjIMTDVe6KEBmdpxAhHq5yV4TI6DyFCPFwlbsiREbnKUSIh6vcFSEyOk8hQjxc5a4IkdF5ChHi4Sp3RYiMzlOIEA9XuStCZHSeQoR4uMpdESKj8xQixMNV7ooQGZ2nECEernJXhMjo0kI5iRAZnacQIR6ucleEyOg8hQjxcJW7IkRG5ylsK+TbxfO7iC/jGvHp4tndhxEeTPO6thIS4EPCr3vwVzffl1f38ebmenk3oruUVkLiPQ0JTwb4uMb9aXSX0kZIbMfjQf/35dWyxrg9u/82QoJ8bEVsxxrx7NwiFVLty15fvvi/Hee6JW2EvL79cXg54s9yWNYNievpS/Nx/KSdPut030bIMdSvR5ty/Hz9/P7252H93O3aTkhsSsTTAf3v2JaQE/F5bEb37YiXp52QGHqN+AkLORFvh6DYjIg13/HaWkhH4FszI2SL0OQ8QiYD3zoOIVuEJucRMhn41nE7CNka6WHnEVLMP0IQUoxAsXHYEIQUI1BsHDYEIcUIFBuHDUFIMQLFxjmbDSnGVR4HITI6TyFCPFzlrgiR0XkKEeLhKndFiIzOU4gQD1e5K0JkdJ5ChHi4yl0RIqPzFCIk5To/iZD5zNMTEZLimZ9EyHzm6YkISfHMTyJkPvP0RISkeOYnETKfeXoiQlI885MImc88PREhKR5PMuuKkIzODjmE7AA9OxIhGZ0dcgjZAXp2JEIyOjvkELID9OxIhGR0dsghZAfo2ZH/AAAA//91ipmoAAAABklEQVQDAFysYslSqAxBAAAAAElFTkSuQmCC';
+        boss7RightGripTexture.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABCElEQVR4AeyUvQ6CMBSFL448gGzqqiuuREdXJ6MPqHFyddSw2lVXHfEhrD0EEtIE6G1jXC7hkLa09349/RnQnx8BEAfEAXFAHAhyIE8WWhmF3ObeAKdkqefqQDOjEAg2ABJj5iPSdE+35eRDIFgASL5Se6pnjsQlgfnE9KFHkmlTZL0sgK7IE3WkmAb0Yu4JNsA53dGtst4GGpr9YLf11dkA9RL0BXb9zwZwDezajw3QtQSuSZv92ABdS/Bu2RvNhHaZBbAuLhEcsIOgjuTj4hpBqLuKBYCggMApwCUEPdMNQdzEiAWxATAoMzNNK02LPILQ7iMvAJ9EbWMEQBwQB37uQNvxq9u/AAAA//9rhPBUAAAABklEQVQDAC6zUUGT7O45AAAAAElFTkSuQmCC';
         function drawBoss7ArenaGripTextures(ctx,cy){
             if(!boss7LeftGripTexture.complete||!boss7LeftGripTexture.naturalWidth||
                !boss7RightGripTexture.complete||!boss7RightGripTexture.naturalWidth)return;
             const smoothing=ctx.imageSmoothingEnabled;
             ctx.imageSmoothingEnabled=false;
             // Cada PNG inteiro é desenhado; o posicionamento considera a área opaca de cada imagem.
-            ctx.drawImage(boss7LeftGripTexture,0,0,100,100,-149,80-cy-137,330,330);
-            ctx.drawImage(boss7RightGripTexture,0,0,100,100,165,78-cy-165,330,330);
+            ctx.drawImage(boss7LeftGripTexture,0,0,boss7LeftGripTexture.naturalWidth,boss7LeftGripTexture.naturalHeight,-109,80-cy-97,250,250);
+            ctx.drawImage(boss7RightGripTexture,0,0,boss7RightGripTexture.naturalWidth,boss7RightGripTexture.naturalHeight,205,78-cy-125,250,250);
             ctx.imageSmoothingEnabled=smoothing;
         }
         const Boss7={
             active:false,phase:0,state:'INACTIVE',timer:0,clock:0,zoom:1,monochrome:0,
-            mirrors:[],clones:[],bolts:[],text:'',flash:-1,visible:false,giant:false,health:1,
+            mirrors:[],clones:[],bolts:[],text:'',flash:-1,visible:false,giant:false,health:1,corruptAttackCooldown:0,
             reset(){
                 this.active=false;this.phase=0;this.state='INACTIVE';this.timer=0;this.clock=0;
                 this.zoom=1;this.monochrome=0;this.mirrors=[];this.clones=[];this.bolts=[];
                 this.flash=-1;this.visible=false;this.giant=false;this.text='';this.floorAction=0;
-                this.echo=null;this.echoIndex=-1;this.health=1;darknessTicks=0;consultCaption.style.display='none';
+                this.echo=null;this.echoIndex=-1;this.health=1;this.corruptAttackCooldown=0;darknessTicks=0;consultCaption.style.display='none';
             },
             init(){
                 this.reset();this.active=true;this.phase=1;this.state='INTRO';this.timer=200;this.giant=true;this.visible=true;
@@ -4304,13 +4532,37 @@
                 this.mirrors.forEach(m=>{for(let i=0;i<(mixed&&m.black?1:2);i++)this.addClone(m,mixed&&m.black,false,mixed&&m.black?2:1,i);});
             },
             addClone(m,corrupt,travel,hp,i=0){
-                this.clones.push({x:m.x+(m.x<160?1:-1)*(12+i*17),y:Infirmary.floors[m.floor],floor:m.floor,corrupt,travel,hp,step:70,dir:m.x<160?1:-1});
+                const cloneX=m.x+(m.x<160?1:-1)*(12+i*17);
+                this.clones.push({x:cloneX,y:Infirmary.floors[m.floor],floor:m.floor,nextFloor:null,targetX:cloneX,targetFloor:m.floor,floorAnimationDirection:0,floorAnimationTimer:0,fleeCooldown:0,attackCooldown:0,corrupt,travel,hp,step:120,dir:m.x<160?1:-1});
             },
-            waitMirror(i){this.flash=i;this.state='MIRROR';this.text='Atire no espelho '+consultNames[i]+' piscando!';},
+            choosePeacefulCloneTarget(c,fleeing=false){
+                let best=null,bestScore=-Infinity;
+                for(let attempt=0;attempt<32;attempt++){
+                    const candidate={x:50+Math.random()*220,floor:Math.floor(Math.random()*Infirmary.floors.length)};
+                    const candidateY=Infirmary.floors[candidate.floor];
+                    let nearestClone=Infinity;
+                    this.clones.forEach(other=>{
+                        if(other===c||other.corrupt)return;
+                        const otherX=Number.isFinite(other.targetX)?other.targetX:other.x;
+                        const otherFloor=Number.isInteger(other.targetFloor)?other.targetFloor:other.floor;
+                        nearestClone=Math.min(nearestClone,Math.hypot(candidate.x-otherX,(candidateY-Infirmary.floors[otherFloor])*0.75));
+                    });
+                    const distanceFromPlayer=Math.hypot(candidate.x-Player.x,(candidateY-Player.y)*0.75);
+                    const score=Math.min(nearestClone,150)*0.9+(fleeing?distanceFromPlayer*1.2:0)+Math.random()*24;
+                    if(score>bestScore){bestScore=score;best=candidate;}
+                }
+                if(!best)return;
+                c.targetX=best.x;
+                c.targetFloor=best.floor;
+                c.fleeCooldown=fleeing?45:0;
+                c.floorAnimationDirection=Infirmary.floors[c.targetFloor]<c.y?-1:1;
+                c.floorAnimationTimer=c.targetFloor===c.floor&&Math.abs(c.y-Infirmary.floors[c.floor])<1?0:720;
+            },
+            waitMirror(i){this.flash=i;this.state='MIRROR';this.text='';},
             breakMirror(i){
                 this.mirrors[i].black=true;this.flash=-1;this.bolts=[];AudioSystem.playGhostDieSound();
                 this.phase=i+2;this.visible=true;this.giant=false;this.state='INTRO';this.timer=150;
-                if(i===0){this.text='Algo está saindo do espelho...';this.state='SHAKE';this.timer=85;}
+                if(i===0){this.text='';this.state='SHAKE';this.timer=85;}
                 if(i===1){this.text='Criancinha bagunceira você, né?\nConsegue seguir ordens simples?';this.streak=0;}
                 if(i===2){this.text='Caramba! Você não desiste.\nVou ter que me esforçar mais.';this.giant=true;}
                 if(i===3){this.text='Qual é, cara... Para de quebrar os meus brinquedos!';this.giant=true;this.state='COMPLAIN';this.timer=170;this.dodges=0;}
@@ -4327,6 +4579,7 @@
                 }}
                 if(this.visible&&!this.giant&&Math.abs(p.x-160)<20&&Math.abs(p.y-(Infirmary.floors[this.phase===6?3:2]-22))<27){
                     if(this.phase===7&&this.state==='FINAL'){
+                        registerBossDefeat('ROOM_RED');
                         this.health=0;this.active=false;this.visible=false;bossDefeatedSequence=true;waitingForPlayerContinue=true;
                         Projectiles.length=0;consultCaption.style.display='none';AudioSystem.playBossDieSound();document.getElementById('victory-screen').classList.remove('hidden');
                     }return true;
@@ -4346,37 +4599,88 @@
                 this.floorAction=0;this.samples=0;this.correct=0;this.vertical=false;this.originFloor=Player.currentFloor;
                 this.leftDistance=0;this.rightDistance=0;this.horizontalDistance=0;this.verticalDistance=0;
                 this.state='COMMAND';this.timer=125;
-                this.text=this.order.toUpperCase()+'! '+(this.jump?'(O chefe deu um pulinho: NÃO obedeça.)':'(Sem pulo: obedeça.)')+'\nAcertos seguidos: '+this.streak+'/5';
+                this.text=this.order.toUpperCase()+'!';
             },
             snakeRound(){
-                this.safeFloor=Math.floor(Math.random()*4);this.state='SNAKE_WARN';this.timer=130;this.roundHit=false;
-                this.text='A mão aponta para o '+(this.safeFloor+1)+'º andar. Vá para lá!\nDesvios: '+this.dodges+'/5';
+                this.safeFloor=Math.floor(Math.random()*4);this.state='SNAKE_WARN';this.timer=115;this.roundHit=false;
+                this.text='';
             },
             update(){
                 if(!this.active||GameState.isPaused||GameState.current!=='ROOM_RED')return;
                 const dt=gameSpeedMultiplier;this.clock+=dt;this.timer-=dt;
+                if(this.corruptAttackCooldown>0)this.corruptAttackCooldown=Math.max(0,this.corruptAttackCooldown-dt);
                 this.zoom+=((this.giant?(this.phase===4?.5:.64):1)-this.zoom)*.05*dt;
                 this.clones.forEach(c=>{
-                    if(c.corrupt){c.dir=Math.sign(Player.x-c.x)||c.dir;
-                        if(c.travel){c.step-=dt;if(c.step<=0){c.floor+=Math.sign(Player.currentFloor-c.floor);c.step=65;}c.y+=(Infirmary.floors[c.floor]-c.y)*.18*dt;}
-                    }else {c.dir=Math.sign(c.x-Player.x)||c.dir;if(c.x<=46)c.dir=1;if(c.x>=274)c.dir=-1;}
-                    c.x=Math.max(43,Math.min(277,c.x+c.dir*(c.corrupt?0.65:1.12)*dt));
-                    if(c.corrupt&&Math.abs(c.x-Player.x)<17&&Math.abs(c.y-Player.y)<22)consultDamage();
+                    if(c.corrupt){
+                        if(c.attackCooldown>0)c.attackCooldown=Math.max(0,c.attackCooldown-dt);
+                        if(c.travel){
+                            if(c.nextFloor===null){
+                                c.step-=dt;
+                                if(c.step<=0){
+                                    const floorDirection=Math.sign(Player.currentFloor-c.floor);
+                                    if(floorDirection!==0){c.nextFloor=c.floor+floorDirection;c.floorAnimationDirection=floorDirection>0?-1:1;c.floorAnimationTimer=1200;}
+                                    c.step=120;
+                                }
+                            }
+                            if(c.nextFloor!==null){
+                                c.floorAnimationTimer=Math.max(0,c.floorAnimationTimer-16*dt);
+                                const destinationY=Infirmary.floors[c.nextFloor];
+                                c.y+=(destinationY-c.y)*.08*dt;
+                                if(Math.abs(destinationY-c.y)<1){c.y=destinationY;c.floor=c.nextFloor;c.nextFloor=null;c.floorAnimationTimer=0;c.floorAnimationDirection=0;c.step=120;}
+                            }
+                        }
+                        const sameFloor=c.floor===Player.currentFloor&&Math.abs(c.y-Player.y)<22;
+                        if(sameFloor){
+                            c.dir=Math.sign(Player.x-c.x)||c.dir;
+                            const attackDelayRemoved=this.phase===6;
+                            if(Math.abs(c.x-Player.x)<17&&Math.abs(c.y-Player.y)<22&&(attackDelayRemoved||(c.attackCooldown<=0&&this.corruptAttackCooldown<=0))&&damageFlashTimer<=0){consultDamage('corruptClone');if(!attackDelayRemoved){c.attackCooldown=150;this.corruptAttackCooldown=150;}}
+                            c.x=Math.max(43,Math.min(277,c.x+c.dir*.95*dt));
+                        }else{
+                            c.x+=c.dir*.95*dt;
+                            if(c.x<=43){c.x=43;c.dir=1;}else if(c.x>=277){c.x=277;c.dir=-1;}
+                        }
+                    }else {
+                        if(c.fleeCooldown>0)c.fleeCooldown=Math.max(0,c.fleeCooldown-dt);
+                        const playerDistance=Math.hypot(c.x-Player.x,(c.y-Player.y)*0.75);
+                        const reachedX=Math.abs(c.targetX-c.x)<1;
+                        const reachedFloor=Math.abs(Infirmary.floors[c.targetFloor]-c.y)<1;
+                        if(playerDistance<105&&c.fleeCooldown<=0){
+                            this.choosePeacefulCloneTarget(c,true);
+                        }else if(reachedX&&reachedFloor){
+                            this.choosePeacefulCloneTarget(c,playerDistance<135);
+                        }
+                        if(c.targetFloor!==c.floor||Math.abs(c.y-Infirmary.floors[c.floor])>1){
+                            c.floorAnimationTimer=Math.max(0,c.floorAnimationTimer-16*dt);
+                            const floorStep=Math.sign(c.targetFloor-c.floor);
+                            const nextFloor=c.targetFloor===c.floor?c.floor:c.floor+floorStep;
+                            const targetY=Infirmary.floors[nextFloor];
+                            c.floorAnimationDirection=targetY<c.y?-1:1;
+                            c.y+=(targetY-c.y)*.12*dt;
+                            if(Math.abs(targetY-c.y)<1){
+                                c.y=targetY;c.floor=nextFloor;
+                                if(c.floor===c.targetFloor){c.floorAnimationTimer=0;c.floorAnimationDirection=0;}
+                                else{c.floorAnimationTimer=720;}
+                            }
+                        }else{c.y=Infirmary.floors[c.floor];c.floorAnimationTimer=0;c.floorAnimationDirection=0;}
+                        const dx=c.targetX-c.x;
+                        c.dir=Math.sign(dx)||c.dir;
+                        c.x=Math.abs(dx)<=0.65*dt?c.targetX:c.x+c.dir*0.65*dt;
+                    }
                 });
                 this.bolts=this.bolts.filter(p=>{p.x+=p.vx*dt;if(Math.abs(p.x-Player.x)<14&&Math.abs(p.y-(Player.y-14))<20)consultDamage();return p.x>15&&p.x<305;});
                 if(this.state==='INTRO'&&this.timer<=0){
-                    if(this.phase===1){this.visible=false;this.giant=false;this.state='CLONES';this.spawnClones();this.text='Elimine as 12 cópias pacíficas.';}
+                    if(this.phase===1){this.visible=false;this.giant=false;this.state='CLONES';this.spawnClones();this.text='';}
                     else if(this.phase===3)this.command();
-                    else if(this.phase===4){this.state='CLONES';this.spawnClones(true);this.text='Elimine todas as cópias. Corrompidas: 2 tiros.';}
+                    else if(this.phase===4){this.state='CLONES';this.spawnClones(true);this.text='';}
                     else if(this.phase===6){this.visible=false;this.mirrors.forEach(m=>{if(m.black)this.addClone(m,true,true,Infinity)});this.waitMirror(5);}
                 }else if(this.state==='CLONES'&&this.clones.length===0)this.waitMirror(this.phase===1?0:3);
-                else if(this.state==='SHAKE'&&this.timer<=0){this.addClone(this.mirrors[0],true,true,Infinity);this.state='PORTAL_WARN';this.shot=5;this.timer=75;this.text='Cuidado com o espelho LARANJA!';}
+                else if(this.state==='SHAKE'&&this.timer<=0){this.addClone(this.mirrors[0],true,true,Infinity);this.state='PORTAL_WARN';this.shot=5;this.timer=75;this.text='';}
                 else if(this.state==='PORTAL_WARN'&&this.timer<=0){
                     const m=this.mirrors[this.shot];this.bolts.push({x:m.x,y:Infirmary.floors[m.floor]-16,vx:m.x<160?5.5:-5.5,color:m.color});
                     this.state='PORTAL_WAIT';this.timer=85;AudioSystem.playThrowSound();
                 }else if(this.state==='PORTAL_WAIT'&&this.timer<=0){
                     this.shot--;if(this.shot<1){this.clones=[];this.visible=false;this.waitMirror(1);}
-                    else {this.state='PORTAL_WARN';this.timer=75;this.text='Cuidado com o espelho '+consultNames[this.shot]+'!';}
+                    else {this.state='PORTAL_WARN';this.timer=75;this.text='';}
                 }else if(this.state==='COMMAND'){
                     // Allow a reaction interval, then evaluate the actual movement over a window.
                     if(this.timer<90){
@@ -4401,7 +4705,7 @@
                                         : this.vertical;
                         if(obey!==this.jump)this.streak++;else {this.streak=0;consultDamage();}
                         if(this.streak>=5){this.state='ORDER_SHAKE';this.timer=80;this.text='Não...!';}
-                        else {this.state='ORDER_GAP';this.timer=45;this.text='Acertos seguidos: '+this.streak+'/5';}
+                        else {this.state='ORDER_GAP';this.timer=45;this.text='';}
                     }
                 }else if(this.state==='ORDER_GAP'&&this.timer<=0)this.command();
                 else if(this.state==='ORDER_SHAKE'&&this.timer<=0){this.visible=false;this.waitMirror(2);}
@@ -4428,7 +4732,7 @@
                 if(this.echoIndex===3){const c=Boss4Controller;this.echo=c;c.active=true;c.x=near;c.y=Player.y;this.timer=65;this.potionThrown=false;}
                 if(this.echoIndex===4){const c=Boss5Controller;this.echo=c;Object.assign(c,{active:true,attackType:1,x:near,y:Player.y,targetFloorIndex:f,state:'ATK1_TREMBLE',stateTimer:45,floorChanges:0,moveDirX:near<160?1:-1});}
                 if(this.echoIndex===5){const c=Boss6Controller;this.echo=c;Object.assign(c,{active:true,attackType:2,x:near,y:Player.y,state:'ATK2_LASER',laserPhase:'PREPARE_LINE',laserTimer:45,laserLine:{x1:near,y1:Player.y-15,x2:Player.x,y2:Player.y-12}});}
-                if(this.echoIndex===6){this.echo=null;this.state='FINAL';this.visible=true;this.health=1;this.text='Agora! Acerte o chefe no terceiro andar.';}
+                if(this.echoIndex===6){this.echo=null;this.state='FINAL';this.visible=true;this.health=1;this.text='';}
             },
             endEcho(){this.echoVisible=false;this.state='ECHO_GAP';this.timer=75;if(this.echo&&this.echo.reset)this.echo.reset();ghosts=[];},
             updateEcho(){
@@ -4449,33 +4753,42 @@
                         if(this.phase===4){
                             // A cabeça fica inteira acima do teto; mãos pequenas agarram as laterais.
                             if(this.zoom<=0.57){
-                                drawPixelMatrix(ctx,consultSprite.slice(0,12),pal,64,-117-cy,6);
+                                if(boss7HeadTexture.complete&&boss7HeadTexture.naturalWidth){
+                                    const smoothing=ctx.imageSmoothingEnabled;
+                                    ctx.imageSmoothingEnabled=false;
+                                    const headSize=96;
+                                    ctx.drawImage(boss7HeadTexture,0,0,boss7HeadTexture.naturalWidth,boss7HeadTexture.naturalHeight,112,Infirmary.floors[3]-headSize-36-cy,headSize,headSize);
+                                    ctx.imageSmoothingEnabled=smoothing;
+                                }
                                 drawBoss7ArenaGripTextures(ctx,cy);
                             }
                         }else if(this.phase===5){
                             // Na quinta fase, a cabeça observa do alto à direita, fora do teto.
-                            drawPixelMatrix(ctx,consultSprite.slice(0,12),pal,238,-83-cy,3);
                             const pointing=['SNAKE_WARN','SNAKES'].includes(this.state);
-                            if(pointing){
-                                // Desenha os 100x100 px completos do PNG; a transparência original posiciona a mão.
-                                if(boss7PointingHandTexture.complete&&boss7PointingHandTexture.naturalWidth){
-                                    const smoothing=ctx.imageSmoothingEnabled;
-                                    ctx.imageSmoothingEnabled=false;
-                                    ctx.drawImage(boss7PointingHandTexture,0,0,100,100,-74,Infirmary.floors[this.safeFloor]-116-cy,200,200);
-                                    ctx.imageSmoothingEnabled=smoothing;
-                                }
-                            }else{
+                            if(!pointing){
                                 // Fora dos avisos, as duas mãos apenas seguram as laterais.
                                 drawBoss7ArenaGripTextures(ctx,cy);
                             }
                         }else{
-                            const x=this.phase===5?238:125;
-                            // Use the supplied face at a larger pixel scale; hands grip the arena.
+                            const x=125;
+                            // O chefe segura a arena com as texturas completas das mãos anexadas.
                             drawPixelMatrix(ctx,consultSprite.slice(0,12),pal,x,-83-cy,3);
-                            ctx.fillStyle='#e1173f';ctx.fillRect(10,15-cy,13,48);ctx.fillRect(297,15-cy,13,48);
-                            for(let k=0;k<4;k++){ctx.fillRect(20,18+k*10-cy,10,5);ctx.fillRect(289,18+k*10-cy,10,5);}
+                            drawBoss7ArenaGripTextures(ctx,cy);
                         }
-                    }else drawPixelMatrix(ctx,consultSprite,pal,136+shaking,Infirmary.floors[this.phase===6?3:2]-48-cy-jumping,1.5);
+                    }else{
+                        const fullBodyScale=2.15;
+                        const fullBodyWidth=consultSprite[0].length*fullBodyScale;
+                        const fullBodyHeight=consultSprite.length*fullBodyScale;
+                        const fullBodyX=(320-fullBodyWidth)/2+shaking;
+                        const fullBodyY=Infirmary.floors[this.phase===6?3:2]-fullBodyHeight-cy-jumping;
+                        if(this.phase===7&&this.state==='FINAL'&&boss7FinalVulnerableTexture.complete&&boss7FinalVulnerableTexture.naturalWidth){
+                            const smoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=false;
+                            ctx.drawImage(boss7FinalVulnerableTexture,0,0,boss7FinalVulnerableTexture.naturalWidth,boss7FinalVulnerableTexture.naturalHeight,fullBodyX,fullBodyY,fullBodyWidth,fullBodyHeight);
+                            ctx.imageSmoothingEnabled=smoothing;
+                        }else{
+                            drawPixelMatrix(ctx,consultSprite,pal,fullBodyX,fullBodyY,fullBodyScale);
+                        }
+                    }
                 }
                 this.mirrors.forEach((m,i)=>{
                     const y=Infirmary.floors[m.floor]-36-cy;
@@ -4485,8 +4798,24 @@
                     if(this.state==='PORTAL_WARN'&&i===this.shot){ctx.fillStyle=m.color;ctx.globalAlpha=.25;ctx.fillRect(35,y+14,250,4);ctx.globalAlpha=1;}
                 });
                 this.clones.forEach(c=>{ctx.save();ctx.translate(c.x,c.y-cy);ctx.scale(c.dir,1);
-                    const frame=walkFrames[Math.floor(this.clock/8)%walkFrames.length];drawPlayerMatrix(ctx,frame,Player.palette,-frame[0].length, -frame.length*2,2);
-                    if(c.corrupt){ctx.fillStyle='#070707';ctx.fillRect(-5,-28,7,6);ctx.fillRect(1,-17,6,8);ctx.fillRect(-7,-7,5,5);}ctx.restore();});
+                    if(c.corrupt){
+                        ctx.imageSmoothingEnabled=false;
+                        if(protagonistCorruptTexture.complete&&protagonistCorruptTexture.naturalWidth){
+                            ctx.drawImage(protagonistCorruptTexture,-30,-56);
+                        }else{
+                            const frame=walkFrames[Math.floor(this.clock/8)%walkFrames.length];
+                            drawPlayerMatrix(ctx,frame,Player.palette,-frame[0].length, -frame.length*2,2);
+                            ctx.fillStyle='#070707';ctx.fillRect(-5,-28,7,6);ctx.fillRect(1,-17,6,8);ctx.fillRect(-7,-7,5,5);
+                        }
+                    }else{
+                        const cloneFrame=c.floorAnimationTimer>0
+                            ? (c.floorAnimationDirection<0?protagonistClimbUpTexture:protagonistClimbDownTexture)
+                            : protagonistWalkFrames[Math.floor(Date.now()/protagonistWalkFrameDuration)%protagonistWalkFrames.length];
+                        ctx.imageSmoothingEnabled=false;
+                        if(cloneFrame.complete&&cloneFrame.naturalWidth)ctx.drawImage(cloneFrame,-30,-56);
+                        else {const frame=walkFrames[Math.floor(this.clock/8)%walkFrames.length];drawPlayerMatrix(ctx,frame,Player.palette,-Math.floor(frame[0].length/2),-frame.length*2,2);}
+                    }
+                    ctx.restore();});
                 this.bolts.forEach(p=>{ctx.fillStyle=p.color;ctx.fillRect(p.x-9,p.y-3-cy,18,6);});
                 if(this.state==='SNAKES')Infirmary.floors.forEach((y,f)=>{if(f===this.safeFloor)return;
                     ctx.strokeStyle='#adff32';ctx.lineWidth=9;ctx.beginPath();for(let x=20;x<=300;x+=3){const sy=y-13-cy+Math.sin(x/10+this.clock*.2)*5;if(x===20)ctx.moveTo(x,sy);else ctx.lineTo(x,sy);}ctx.stroke();
@@ -4498,8 +4827,12 @@
                 const c=this.echo,i=this.echoIndex;
                 if(this.echoVisible){
                     const palettes=[ghostPalettePurple,ghostPaletteBlue,ghostPaletteAqua,ghostPaletteGreen,ghostPaletteYellow,ghostPaletteOrange];
-                    if(!drawGhostTexture(ctx,roomGhostTextures[i],c.x,c.y-cy))
-                        drawPixelMatrix(ctx,nurseGhostMatrix,palettes[i],c.x-nurseGhostMatrix[0].length,c.y-nurseGhostMatrix.length*2-cy,2);
+                    const facing=Number.isFinite(c.vx)?c.vx:(Number.isFinite(c.moveDirX)?c.moveDirX:1);
+                    if(!drawGhostTexture(ctx,roomGhostTextures[i],c.x,c.y-cy,facing)){
+                        const ghostWidth=nurseGhostMatrix[0].length*2,ghostHeight=nurseGhostMatrix.length*2;
+                        if(facing<0){ctx.save();ctx.translate(c.x,c.y-cy);ctx.scale(-1,1);drawPixelMatrix(ctx,nurseGhostMatrix,palettes[i],-Math.floor(ghostWidth/2),-ghostHeight,2);ctx.restore();}
+                        else drawPixelMatrix(ctx,nurseGhostMatrix,palettes[i],c.x-Math.floor(ghostWidth/2),c.y-ghostHeight-cy,2);
+                    }
                 }
                 if(i===1)c.projectiles.forEach(p=>{ctx.save();ctx.translate(p.x,p.y-cy);ctx.rotate(p.angle||0);ctx.fillStyle='#dbeafe';ctx.fillRect(-5,-1,10,2);ctx.fillStyle='#60a5fa';ctx.fillRect(-6,-2,3,4);ctx.restore();});
                 if(i===2&&c.state==='WAITING_SOUND_CHOICE'){
@@ -4525,14 +4858,25 @@
             else if(Boss7.state==='ECHO'&&Boss7.echoIndex===2){
                 // Reuse the third boss's exact corridor-crossing ghosts, without invoking unrelated bosses.
                 for(let j=ghosts.length-1;j>=0;j--){const g=ghosts[j];g.x+=g.vx*gameSpeedMultiplier;
-                    if(!drawGhostTexture(ctx,roomGhostTextures[2],g.x,g.y-camera))
-                        drawPixelMatrix(ctx,nurseGhostMatrix,ghostPaletteAqua,g.x-nurseGhostMatrix[0].length,g.y-nurseGhostMatrix.length*2-camera,2);
+                    if(!drawGhostTexture(ctx,roomGhostTextures[2],g.x,g.y-camera,g.vx)){
+                        const ghostWidth=nurseGhostMatrix[0].length*2;
+                        const ghostHeight=nurseGhostMatrix.length*2;
+                        if(g.vx<0){ctx.save();ctx.translate(g.x,g.y-camera);ctx.scale(-1,1);drawPixelMatrix(ctx,nurseGhostMatrix,ghostPaletteAqua,-Math.floor(ghostWidth/2),-ghostHeight,2);ctx.restore();}
+                        else drawPixelMatrix(ctx,nurseGhostMatrix,ghostPaletteAqua,g.x-Math.floor(ghostWidth/2),g.y-ghostHeight-camera,2);
+                    }
                     if(Math.abs(Player.x-g.x)<24&&Math.abs(Player.y-g.y)<24)consultDamage();if(g.x<=35||g.x>=285)ghosts.splice(j,1);
                 }
             }
-            Boss7.draw(ctx,camera);updateAndDrawProjectiles(ctx,0,camera);updateAndDrawCrucifixEffects(ctx,0,camera);Player.draw(ctx,0,camera);ctx.restore();
-            consultCaption.style.display='block';
-            consultCaption.textContent=Boss7.active?'FASE '+Boss7.phase+'/7 • '+(Boss7.phase===7&&Boss7.state==='FINAL'?'VIDA DO CHEFE: 1':'CHEFE INVULNERÁVEL')+'\n'+Boss7.text:'O CONSULTÓRIO • Fantasmas derrotados: '+(ghostsSpawnedTotal-ghosts.length)+'/60';
+            Boss7.draw(ctx,camera);
+            if(Boss7.giant&&Boss7.phase===5&&['SNAKE_WARN','SNAKES'].includes(Boss7.state)&&boss7PointingHandTexture.complete&&boss7PointingHandTexture.naturalWidth){
+                const smoothing=ctx.imageSmoothingEnabled;ctx.imageSmoothingEnabled=false;
+                ctx.drawImage(boss7PointingHandTexture,0,0,boss7PointingHandTexture.naturalWidth,boss7PointingHandTexture.naturalHeight,-65,Infirmary.floors[Boss7.safeFloor]-100-camera,150,150);
+                ctx.imageSmoothingEnabled=smoothing;
+            }
+            updateAndDrawProjectiles(ctx,0,camera);updateAndDrawCrucifixEffects(ctx,0,camera);Player.draw(ctx,0,camera);ctx.restore();
+            const bossSpeech=Boss7.active?Boss7.text.trim():'';
+            consultCaption.style.display=bossSpeech?'block':'none';
+            consultCaption.textContent=bossSpeech;
         }
 
         const PROGRESS_STORAGE_KEY = 'phasmohospital.progress.v1';
@@ -4550,14 +4894,12 @@
                 doors: Corridor.doors.map(door => ({ isLocked: door.isLocked, isCleared: door.isCleared })),
                 whiteKey,
                 corridorX: savedCorridorX,
-                achievements: {
-                    firstDeath: achievementFirstDeathUnlocked,
-                    infirmary: achievementInfirmaryUnlocked,
-                    operatingRoom: achievementOperatingRoomUnlocked,
-                    pharmacy: achievementPharmacyUnlocked,
-                    xray: achievementXrayUnlocked,
-                    office: achievementOfficeUnlocked
-                }
+                achievements: unlockedAchievements,
+                totalDeaths,
+                totalGhostsKilled,
+                currentRunDeaths,
+                currentRunTookDamage,
+                bossAttemptDeaths,
             };
             try {
                 sessionStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(progress));
@@ -4581,38 +4923,22 @@
                     });
                 }
                 whiteKey = !!progress.whiteKey;
+                unlockedAchievements = progress.achievements && typeof progress.achievements === 'object' ? progress.achievements : {};
+                totalDeaths = Number.isFinite(progress.totalDeaths) ? progress.totalDeaths : 0;
+                totalGhostsKilled = Number.isFinite(progress.totalGhostsKilled) ? progress.totalGhostsKilled : 0;
+                currentRunDeaths = Number.isFinite(progress.currentRunDeaths) ? progress.currentRunDeaths : 0;
+                currentRunTookDamage = !!progress.currentRunTookDamage;
+                bossAttemptDeaths = progress.bossAttemptDeaths && typeof progress.bossAttemptDeaths === 'object' ? progress.bossAttemptDeaths : {};
                 if (Number.isFinite(progress.corridorX)) savedCorridorX = Math.max(30, Math.min(800, progress.corridorX));
                 Player.x = savedCorridorX;
                 Player.currentFloor = 0;
                 Player.y = 120;
-                const achievements = progress.achievements || {};
-                achievementFirstDeathUnlocked = !!achievements.firstDeath;
-                achievementInfirmaryUnlocked = !!achievements.infirmary;
-                achievementOperatingRoomUnlocked = !!achievements.operatingRoom;
-                achievementPharmacyUnlocked = !!achievements.pharmacy;
-                achievementXrayUnlocked = !!achievements.xray;
-                achievementOfficeUnlocked = !!achievements.office;
-                const rows = [
-                    ['ach-first-death', achievementFirstDeathUnlocked, 'Primeira Morte', '#a855f7'],
-                    ['ach-infirmary', achievementInfirmaryUnlocked, 'A Enfermaria', '#a855f7'],
-                    ['ach-operating-room', achievementOperatingRoomUnlocked, 'A Sala de Operações', '#a855f7'],
-                    ['ach-pharmacy', achievementPharmacyUnlocked, 'A Farmácia', '#22c55e'],
-                    ['ach-xray', achievementXrayUnlocked, 'Raio-X', '#eab308'],
-                    ['ach-office', achievementOfficeUnlocked, 'O Escritório', '#f97316']
-                ];
-                rows.forEach(([id, unlocked, title, color]) => {
-                    if (!unlocked) return;
-                    const element = document.getElementById(id);
-                    if (element) {
-                        element.innerHTML = '[ Desbloqueado ] ' + title;
-                        element.style.color = color;
-                    }
-                });
             } catch (error) {
                 console.warn('Não foi possível carregar o progresso desta sessão.', error);
             }
         }
         loadProgress();
+        renderAchievements();
         requestAnimationFrame(gameLoop);
     </script>
 </body>
